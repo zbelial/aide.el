@@ -1,2 +1,2 @@
-# aide.el
-AI powered Development environtment for Emacs.
+# aidee.el
+AI powered Development Environtment for Emacs.
