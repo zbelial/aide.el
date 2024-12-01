@@ -1,0 +1,8 @@
+#+STARTUP: overview 
+#+STARTUP: hidestars
+#+TITLE: README
+#+Date: 24-10-15
+
+AI powered Development environtment for Emacs.
+
+
