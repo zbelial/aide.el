@@ -3,6 +3,6 @@
 #+TITLE: README
 #+Date: 24-10-15
 
-AI powered Development environtment for Emacs.
+AI powered Development Environtment for Emacs.
 
 
