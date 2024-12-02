@@ -35,12 +35,10 @@
 (eval-and-compile
   (require 'cl-macs))
 (require 'cl-lib)
-(require 'project)
 (require 'ellama)
-(require 'cache)
 
 ;;;; utils
-(defvar ellama--load-path (file-name-directory load-file-name))
+;; (defvar ellama--load-path (file-name-directory load-file-name))
 
 ;;;; file skeleton
 
@@ -136,7 +134,40 @@ Key is file name, value is of type `ellama-buffer-skeleton'.")
           (message "language: %s without parser available" language))))
     parser))
 
+
+(defvar ellama--indent-step nil)
+(defvar ellama--travel-stack nil)
+(defvar ellama--travel-result nil)
+
+(defun ellama--treesit-traval-sparse-tree-1 (language ele)
+  (cond
+   ((null ele)
+    )
+   ((atom ele)
+    (push ele ellama--travel-stack)
+    (let ((node-type (treesit-node-type ele))
+          (node-start (treesit-node-start ele))
+          (node-end (treesit-node-end ele))
+          query)
+      (setq query (ellama--treesit-language-node-query language node-type))
+      )
+    )
+   ((listp ele)
+    (setq ellama--indent-step (1+ ellama--indent-step))
+    (cl-dolist (e ele)
+      )
+    )
+   (t
+    )
+   )
+  )
+
 (defun ellama--treesit-traval-sparse-tree (language sparse-tree)
+  "Perform a depth-first, pre-order traversal of SPARSE-TREE."
+  (setq ellama--indent-step 0
+        ellama--travel-stack nil
+        ellama--travel-result "")
+  (ellama--treesit-traval-sparse-tree-1 language sparse-tree)
   )
 
 (defun ellama--retrieve-buffer-skeleton (&optional buf)
