@@ -139,25 +139,104 @@ Key is file name, value is of type `ellama-buffer-skeleton'.")
 (defvar ellama--travel-stack nil)
 (defvar ellama--travel-result nil)
 
+(defun ellama--treesit-capture (node query &optional beg end node-only)
+  "Capture nodes and return them as a pair.
+The car of the pair is context, and the cdr is context.end."
+  (let (captures
+        index
+        total
+        result
+        first
+        second
+        third)
+    (setq captures (treesit-query-capture node query (or beg (treesit-node-start node)) (or end (1+ (point)))))
+    (when captures
+      (setq index 0)
+      (setq total (length captures))
+      (while (< index total)
+        (setq first (nth index captures)
+              second (nth (+ index 1) captures)
+              third (nth (+ index 2) captures))
+        (cond
+         ((and (eq (car first) 'context)
+               (eq (car second) 'context.real)
+               (eq (car third) 'context.end))
+          (cl-pushnew (list first second third) result)
+          (setq index (+ index 3)))
+         ((and (eq (car first) 'context)
+               (eq (car second) 'context.end))
+          (cl-pushnew (list first second) result)
+          (setq index (+ index 2)))
+         ((and (eq (car first) 'context)
+               (eq (car second) 'context))
+          (cl-pushnew (list first) result)
+          (setq index (1+ index)))
+         ((and (eq (car first) 'context)
+               (eq second nil))
+          (cl-pushnew (list first) result)
+          (setq index (1+ index)))
+         (t
+          (setq index (1+ index)))))
+      (setq result (nreverse result)))
+    result))
+
 (defun ellama--treesit-traval-sparse-tree-1 (language ele)
   (cond
    ((null ele)
+    ;; nothing
     )
    ((atom ele)
     (push ele ellama--travel-stack)
     (let ((node-type (treesit-node-type ele))
           (node-start (treesit-node-start ele))
           (node-end (treesit-node-end ele))
-          query)
-      (setq query (ellama--treesit-language-node-query language node-type))
-      )
-    )
+          query
+          captures)
+      (when-let* ((query (ellama--treesit-language-node-query language node-type))
+                  (captures (ellama--treesit-capture ele query node-start node-end)))
+        (message "captures: %s" captures)
+        (let (context
+              context.real
+              context.end
+              len
+              start-pos
+              end-pos
+              line-no)
+          (save-excursion
+            (save-restriction
+              (widen)
+              (cl-dolist (capture captures)
+                (message "capture: %s" capture)
+                (setq len (length capture))
+                (cond
+                 ((= len 1)
+                  (setq context (cdr (nth 0 capture)))
+                  (setq start-pos (treesit-node-start context)
+                        end-pos (treesit-node-end context)
+                        line-no (line-number-at-pos start-pos))
+                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result))
+                 ((= len 2)
+                  (setq context (cdr (nth 0 capture))
+                        context.end (cdr (nth 1 capture)))
+                  (setq start-pos (treesit-node-start context)
+                        end-pos (treesit-node-start context.end)
+                        line-no (line-number-at-pos start-pos))
+                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result))
+                 ((= len 3)
+                  (setq context (cdr (nth 0 capture))
+                        context.real (cdr (nth 1 capture))
+                        context.end (cdr (nth 2 capture)))
+                  (setq start-pos (treesit-node-start context.real)
+                        end-pos (treesit-node-start context.end)
+                        line-no (line-number-at-pos start-pos))
+                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result)))))))
+        )))
    ((listp ele)
     (setq ellama--indent-step (1+ ellama--indent-step))
     (cl-dolist (e ele)
-      )
-    )
+      (ellama--treesit-traval-sparse-tree-1 language e)))
    (t
+    ;; nothing
     )
    )
   )
@@ -166,7 +245,7 @@ Key is file name, value is of type `ellama-buffer-skeleton'.")
   "Perform a depth-first, pre-order traversal of SPARSE-TREE."
   (setq ellama--indent-step 0
         ellama--travel-stack nil
-        ellama--travel-result "")
+        ellama--travel-result nil)
   (ellama--treesit-traval-sparse-tree-1 language sparse-tree)
   )
 
@@ -188,8 +267,8 @@ Key is file name, value is of type `ellama-buffer-skeleton'.")
                                  (lambda (node)
                                    (member (treesit-node-type node) node-types))))
               (when sparse-tree
-                ))
-            sparse-tree)
+                (setq tags (ellama--treesit-traval-sparse-tree language sparse-tree))))
+            tags)
         (message "parser or node types are nil")))
     )
   )
