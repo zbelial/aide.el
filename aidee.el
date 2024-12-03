@@ -52,6 +52,8 @@
                    ("function_definition" (function_definition parameters: (_) :anchor ":" @context.end) @context)))
         (go . (("function_declaration" (function_declaration body: (_) @context.end) @context)
                ("method_declaration" (method_declaration body: (_) @context.end) @context)))
+        (java . (("class_declaration" (class_declaration body: (_) @context.end) @context)
+                 ("method_declaration" (method_declaration body: (_) @context.end) @context)))
         )
       )
 
@@ -186,10 +188,12 @@ The car of the pair is context, and the cdr is context.end."
     ;; nothing
     )
    ((atom ele)
-    (push ele ellama--travel-stack)
+    (push (list ele ellama--indent-step) ellama--travel-stack)
     (let ((node-type (treesit-node-type ele))
           (node-start (treesit-node-start ele))
           (node-end (treesit-node-end ele))
+          (indentation (make-string (* ellama--indent-step 4) ?\s))
+          result
           query
           captures)
       (when-let* ((query (ellama--treesit-language-node-query language node-type))
@@ -214,14 +218,14 @@ The car of the pair is context, and the cdr is context.end."
                   (setq start-pos (treesit-node-start context)
                         end-pos (treesit-node-end context)
                         line-no (line-number-at-pos start-pos))
-                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result))
+                  (cl-pushnew (concat indentation (buffer-substring-no-properties start-pos end-pos)) ellama--travel-result))
                  ((= len 2)
                   (setq context (cdr (nth 0 capture))
                         context.end (cdr (nth 1 capture)))
                   (setq start-pos (treesit-node-start context)
                         end-pos (treesit-node-start context.end)
                         line-no (line-number-at-pos start-pos))
-                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result))
+                  (cl-pushnew (concat indentation (buffer-substring-no-properties start-pos end-pos)) ellama--travel-result))
                  ((= len 3)
                   (setq context (cdr (nth 0 capture))
                         context.real (cdr (nth 1 capture))
@@ -229,25 +233,26 @@ The car of the pair is context, and the cdr is context.end."
                   (setq start-pos (treesit-node-start context.real)
                         end-pos (treesit-node-start context.end)
                         line-no (line-number-at-pos start-pos))
-                  (cl-pushnew (buffer-substring-no-properties start-pos end-pos) ellama--travel-result)))))))
+                  (cl-pushnew (concat indentation (buffer-substring-no-properties start-pos end-pos)) ellama--travel-result)))))))
         )))
    ((listp ele)
     (setq ellama--indent-step (1+ ellama--indent-step))
     (cl-dolist (e ele)
-      (ellama--treesit-traval-sparse-tree-1 language e)))
+      (ellama--treesit-traval-sparse-tree-1 language e))
+    (setq ellama--indent-step (1- ellama--indent-step)))
    (t
     ;; nothing
-    )
-   )
-  )
+    )))
 
 (defun ellama--treesit-traval-sparse-tree (language sparse-tree)
   "Perform a depth-first, pre-order traversal of SPARSE-TREE."
-  (setq ellama--indent-step 0
+  (setq ellama--indent-step -1
         ellama--travel-stack nil
         ellama--travel-result nil)
+  (when (null (car sparse-tree))
+    (setq ellama--indent-step -2))
   (ellama--treesit-traval-sparse-tree-1 language sparse-tree)
-  )
+  (setq ellama--travel-result (nreverse ellama--travel-result)))
 
 (defun ellama--retrieve-buffer-skeleton (&optional buf)
   (let* ((buf (or buf (current-buffer)))
