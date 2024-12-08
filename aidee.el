@@ -6,7 +6,7 @@
 
 ;; Maintainer: zbelial zjyzhaojiyang@gmail.com
 
-;; Homepage: https://github.com/zbelial/aidee.git
+;; Homepage: https://github.com/zbelial/aidee.el.git
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (ellama "0.12.7"))
 ;; Keywords: AI LLM Emacs Coding
@@ -193,10 +193,7 @@ The car of the pair is context, and the cdr is context.body."
       (aidee--treesit-traval-sparse-tree-1 language e))
     (setq aidee--indent-step (1- aidee--indent-step))
     ;; pop surrouding end [1]
-    (setq aidee--travel-result (concat aidee--travel-result (pop aidee--surrounding-end-stack))))
-   (t
-    ;; nothing
-    )))
+    (setq aidee--travel-result (concat aidee--travel-result (pop aidee--surrounding-end-stack))))))
 
 (defun aidee--treesit-traval-sparse-tree (language sparse-tree)
   "Perform a depth-first, pre-order traversal of SPARSE-TREE."
@@ -239,5 +236,5 @@ The car of the pair is context, and the cdr is context.body."
 ;; indent-tabs-mode: nil
 ;; End:
 
-;;; aidee ends here
+;;; aidee.el ends here
 
