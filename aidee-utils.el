@@ -59,7 +59,7 @@ Improved abc feature by adding new xyz module.
   :group 'aidee
   :type 'string)
 
-;;; Chain
+;;;; Chain
 (defcustom aidee-always-show-chain-steps nil
   "Always show aidee chain buffers."
   :type 'boolean

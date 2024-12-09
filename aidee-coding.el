@@ -38,6 +38,7 @@
   :group 'aidee
   :type '(sexp :validate 'llm-standard-provider-p))
 
+;;;; Coding helpers
 (defcustom aidee-code-review-prompt-template "You are professional software engineer. Review provided code and make concise suggestions."
   "Prompt template for `aidee-code-review'."
   :group 'aidee
