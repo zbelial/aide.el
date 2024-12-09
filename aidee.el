@@ -37,7 +37,7 @@
   (require 'cl-macs))
 (require 'cl-lib)
 
-;;;; copied from ellama and modified
+;;;; Copied from ellama and modified
 (require 'eieio)
 (require 'llm)
 (require 'llm-provider-utils)
@@ -118,7 +118,6 @@
     (define-key map (kbd "x b") 'aidee-context-add-buffer)
     (define-key map (kbd "x f") 'aidee-context-add-file)
     (define-key map (kbd "x s") 'aidee-context-add-selection)
-    (define-key map (kbd "x i") 'aidee-context-add-info-node)
     ;; provider
     (define-key map (kbd "p s") 'aidee-provider-select)
     map)
@@ -171,11 +170,6 @@
 
 (defcustom aidee-code-review-prompt-template "You are professional software engineer. Review provided code and make concise suggestions."
   "Prompt template for `aidee-code-review'."
-  :group 'aidee
-  :type 'string)
-
-(defcustom aidee-change-prompt-template "Change the following text, %s, just output the final text without additional quotes around it:\n%s"
-  "Prompt template for `aidee-change'."
   :group 'aidee
   :type 'string)
 
@@ -566,19 +560,6 @@ If EPHEMERAL non nil new session will not be associated with any file."
 	   (concat "." base-name ".session.el"))))
     session-file-name))
 
-(defun aidee--get-translation-file-name (file-name)
-  "Get aidee translation file name for FILE-NAME."
-  (let* ((base-name (file-name-base file-name))
-	 (ext (file-name-extension file-name))
-	 (dir (file-name-directory file-name))
-	 (translation-file-name
-	  (file-name-concat
-	   dir
-	   (concat base-name ".translation"
-		   (when ext
-		     (concat "." ext))))))
-    translation-file-name))
-
 (defun aidee--save-session ()
   "Save current aidee session."
   (when aidee--current-session
@@ -666,8 +647,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
 	      (hash-table-keys aidee--active-sessions)))
 	 (buffer (aidee-get-session-buffer id))
 	 (file (buffer-file-name buffer))
-	 (session-file (aidee--get-session-file-name file))
-	 (translation-file (aidee--get-translation-file-name file)))
+	 (session-file (aidee--get-session-file-name file)))
     (kill-buffer buffer)
     (delete-file file t)
     (delete-file session-file t)
@@ -677,9 +657,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
 		  (file-equal-p (buffer-file-name buf)
 				translation-file))
 	 (kill-buffer buf)))
-     (buffer-list))
-    (when (file-exists-p translation-file)
-      (delete-file translation-file t))))
+     (buffer-list))))
 
 (defun aidee-activate-session (id)
   "Change current active session to session with ID."
@@ -731,7 +709,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
     (remhash id aidee--active-sessions)
     (puthash new-id buffer aidee--active-sessions)))
 
-;; Context elements
+;;;; Context elements
 
 (defclass aidee-context-element () ()
   "A structure for holding information about a context element.")
@@ -753,7 +731,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
       (push element (aidee-session-context session))
     (push element aidee--new-session-context)))
 
-;; Buffer context element
+;;;;; Buffer context element
 
 (defclass aidee-context-element-buffer (aidee-context-element)
   ((name :initarg :name :type string))
@@ -780,7 +758,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
   (with-slots (name) element
     (format "[[elisp:(display-buffer \"%s\")][%s]]" name name)))
 
-;; File context element
+;;;;; File context element
 
 (defclass aidee-context-element-file (aidee-context-element)
   ((name :initarg :name :type string))
@@ -808,38 +786,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
   (with-slots (name) element
     (format "[[file:%s][%s]]" name name)))
 
-;; Info node context element
-
-(defclass aidee-context-element-info-node (aidee-context-element)
-  ((name :initarg :name :type string))
-  "A structure for holding information about a context element.")
-
-(cl-defmethod aidee-context-element-extract
-  ((element aidee-context-element-info-node))
-  "Extract the content of the context ELEMENT."
-  (with-slots (name) element
-    (with-temp-buffer
-      (info name (current-buffer))
-      (buffer-substring-no-properties (point-min) (point-max)))))
-
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-info-node) (mode (eql 'markdown-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name) element
-    (format "```emacs-lisp\n(info \"%s\")\n```\n" name)))
-
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-info-node) (mode (eql 'org-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name) element
-    (format "[[%s][%s]]"
-	    (replace-regexp-in-string
-	     "(\\(.?*\\)) \\(.*\\)" "info:\\1#\\2" name)
-            name)))
-
-;; Text context element
+;;;;; Text context element
 
 (defclass aidee-context-element-text (aidee-context-element)
   ((content :initarg :content :type string))
@@ -862,41 +809,6 @@ If EPHEMERAL non nil new session will not be associated with any file."
   (ignore mode)
   (oref element content))
 
-;; Webpage quote context elements
-
-(defclass aidee-context-element-webpage-quote (aidee-context-element)
-  ((name :initarg :name :type string)
-   (url :initarg :url :type string)
-   (content :initarg :content :type string))
-  "A structure for holding information about a context element.")
-
-(cl-defmethod aidee-context-element-extract
-  ((element aidee-context-element-webpage-quote))
-  "Extract the content of the context ELEMENT."
-  (oref element content))
-
-(defun aidee--quote-buffer (quote)
-  "Return buffer name for QUOTE."
-  (let* ((buf-name (concat (make-temp-name "*aidee-quote-") "*"))
-	 (buf (get-buffer-create buf-name t)))
-    (with-current-buffer buf
-      (with-silent-modifications
-	(insert quote)))
-    buf-name))
-
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-webpage-quote) (mode (eql 'markdown-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name url content) element
-    (if aidee-show-quotes
-	(format "[%s](%s):\n%s\n\n"
-		name url
-		(aidee--md-quote content))
-      (format
-       "[%s](%s):\n```emacs-lisp\n(display-buffer \"%s\")\n```\n"
-       name url (aidee--quote-buffer content)))))
-
 (defun aidee--md-quote (content)
   "Return quoted CONTENT for markdown."
   (with-temp-buffer
@@ -914,58 +826,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
   "Return transformed CONTENT for org quotes."
   (replace-regexp-in-string "^*" " *" content))
 
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-webpage-quote) (mode (eql 'org-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name url content) element
-    (if aidee-show-quotes
-	(format "[[%s][%s]]:\n#+BEGIN_QUOTE\n%s\n#+END_QUOTE\n"
-		url name (aidee--org-quote content))
-      (format "[[%s][%s]] [[elisp:(display-buffer \"%s\")][show]]"
-	      url name (aidee--quote-buffer content)))))
-
-;; Info node quote context elements
-
-(defclass aidee-context-element-info-node-quote (aidee-context-element)
-  ((name :initarg :name :type string)
-   (content :initarg :content :type string))
-  "A structure for holding information about a context element.")
-
-(cl-defmethod aidee-context-element-extract
-  ((element aidee-context-element-info-node-quote))
-  "Extract the content of the context ELEMENT."
-  (oref element content))
-
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-info-node-quote) (mode (eql 'markdown-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name content) element
-    (if aidee-show-quotes
-	(format "```emacs-lisp\n(info \"%s\")\n```\n%s\n\n"
-		name
-		(aidee--md-quote content))
-      (format "```emacs-lisp\n(info \"%s\")\n```\nshow:\n```emacs-lisp\n(display-buffer \"%s\")\n```\n" name (aidee--quote-buffer content)))))
-
-(cl-defmethod aidee-context-element-format
-  ((element aidee-context-element-info-node-quote) (mode (eql 'org-mode)))
-  "Format the context ELEMENT for the major MODE."
-  (ignore mode)
-  (with-slots (name content) element
-    (if aidee-show-quotes
-	(format "[[%s][%s]]:\n#+BEGIN_QUOTE\n%s\n#+END_QUOTE\n"
-		(replace-regexp-in-string
-		 "(\\(.?*\\)) \\(.*\\)" "info:\\1#\\2" name)
-                name
-		(aidee--org-quote content))
-      (format "[[%s][%s]] [[elisp:(display-buffer \"%s\")][show]]"
-	      (replace-regexp-in-string
-	       "(\\(.?*\\)) \\(.*\\)" "info:\\1#\\2" name)
-	      name
-	      (aidee--quote-buffer content)))))
-
-;; File quote context elements
+;;;;; File quote context elements
 
 (defclass aidee-context-element-file-quote (aidee-context-element)
   ((path :initarg :path :type string)
@@ -1052,63 +913,6 @@ If EPHEMERAL non nil new session will not be associated with any file."
   "Add TEXT to context."
   (let ((element (aidee-context-element-text :content text)))
     (aidee-context-element-add element)))
-
-(declare-function Info-copy-current-node-name "info")
-
-;;;###autoload
-(defun aidee-context-add-info-node (node)
-  "Add info NODE to context."
-  (interactive (list (Info-copy-current-node-name)))
-  (let ((element (aidee-context-element-info-node :name node)))
-    (aidee-context-element-add element)))
-
-(defun aidee-context-add-info-node-quote-noninteractive (name content)
-  "Add info node with NAME quote CONTENT to context."
-  (let ((element (aidee-context-element-info-node-quote
-		  :name name :content content)))
-    (aidee-context-element-add element)))
-
-;;;###autoload
-(defun aidee-context-add-info-node-quote ()
-  "Add info node quote to context interactively."
-  (interactive)
-  (let ((name (Info-copy-current-node-name))
-	(content (if (region-active-p)
-		     (buffer-substring-no-properties
-		      (region-beginning)
-		      (region-end))
-		   (buffer-substring-no-properties
-		    (point-min)
-		    (point-max)))))
-    (if (not name)
-	(warn "should be called from `info' buffer")
-      (aidee-context-add-info-node-quote-noninteractive name content))))
-
-(defun aidee-context-add-webpage-quote-noninteractive (name url content)
-  "Add webpage with NAME and URL quote CONTENT to context."
-  (let ((element (aidee-context-element-webpage-quote
-		  :name name :url url :content content)))
-    (aidee-context-element-add element)))
-
-;;;###autoload
-(defun aidee-context-add-webpage-quote-eww ()
-  "Add webpage quote to context interactively from `eww'."
-  (interactive)
-  (defvar eww-data)
-  (declare-function eww-current-url "eww")
-  (if (eq major-mode 'eww-mode)
-      (let* ((name (plist-get eww-data :title))
-	     (url (eww-current-url))
-	     (content (if (region-active-p)
-			  (buffer-substring-no-properties
-			   (region-beginning)
-			   (region-end))
-			(buffer-substring-no-properties
-			 (point-min)
-			 (point-max)))))
-	(aidee-context-add-webpage-quote-noninteractive name url content))
-    (warn "Should be called from `eww'.")))
-
 
 (defun aidee--format-context (session)
   "Format SESSION context for chat buffer."
@@ -1668,28 +1472,6 @@ ARGS contains keys for fine control.
   (aidee-chat aidee-code-review-prompt-template nil :provider aidee-coding-provider))
 
 ;;;###autoload
-(defun aidee-change (change &optional edit-template)
-  "Change selected text or text in current buffer according to provided CHANGE.
-When the value of EDIT-TEMPLATE is 4, or with one `universal-argument' as
-prefix (\\[universal-argument]), prompt the user to amend the template."
-  (interactive "sWhat needs to be changed: \np")
-  (let* ((beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point-max)))
-         (template-orig (format aidee-change-prompt-template change "%s"))
-         (template (if (= edit-template 4)
-                       (read-from-minibuffer "Template: " template-orig)
-                     template-orig))
-	 (text (buffer-substring-no-properties beg end)))
-    (kill-region beg end)
-    (aidee-stream
-     (format template text)
-     :point beg)))
-
-;;;###autoload
 (defun aidee-code-edit (change)
   "Change selected code or code in current buffer according to provided CHANGE."
   (interactive "sWhat needs to be changed in this code: ")
@@ -1812,7 +1594,7 @@ buffer."
 		 providers nil nil #'string=)))
     (setq aidee--current-session-id nil)))
 
-;;;; file skeleton
+;;;; File skeleton
 
 (cl-defstruct aidee-buffer-skeleton
   (bufname)
@@ -2001,7 +1783,7 @@ The car of the pair is context, and the cdr is context.body."
         (message "parser or node types are nil")
         nil))))
 
-;;;; repomap
+;;;; Repomap
 
 
 (provide 'aidee)
