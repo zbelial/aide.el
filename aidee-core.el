@@ -8,7 +8,6 @@
 
 ;; Homepage: https://github.com/zbelial/aidee.el.git
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (ellama "0.12.7"))
 ;; Keywords: AI LLM Emacs Coding
 
 
@@ -178,30 +177,6 @@ PROMPT is a prompt string."
           (const :tag "By first N words of prompt" aidee-generate-name-by-words)
           (const :tag "By current time" aidee-generate-name-by-time)
           (function :tag "By custom function")))
-
-(defcustom aidee-generate-commit-message-template "<INSTRUCTIONS>
-You are professional software developer.
-
-Write concise commit message based on diff in the following format:
-<FORMAT>
-First line should contain short title described major change in functionality.
-Then one empty line. Then detailed description of all changes.
-</FORMAT>
-<EXAMPLE>
-Improve abc
-
-Improved abc feature by adding new xyz module.
-</EXAMPLE>
-
-**Reply with commit message only without any quotes.**
-</INSTRUCTIONS>
-
-<DIFF>
-%s
-</DIFF>"
-  "Prompt template for `aidee-generate-commit-message'."
-  :group 'aidee
-  :type 'string)
 
 (defcustom aidee-chat-done-callback nil
   "Callback that will be called on aidee chat response generation done.
@@ -1109,12 +1084,12 @@ ARGS contains keys for fine control.
 the full response text when the request completes (with BUFFER current)."
   (interactive "sAsk aidee: ")
   (let* ((ollama-binary (executable-find aidee-ollama-binary))
-	 (providers (append
-                     `(("default model" . aidee-provider)
-		       ,(if (and ollama-binary
-				 (file-exists-p ollama-binary))
-			    '("ollama model" . (aidee-get-ollama-local-model))))
-                     aidee-providers))
+	 (providers (delete nil (append
+                                 `(("default model" . aidee-provider)
+		                   ,(if (and ollama-binary
+				             (file-exists-p ollama-binary))
+			                '("ollama model" . (aidee-get-ollama-local-model))))
+                                 aidee-providers)))
 	 (variants (mapcar #'car providers))
 	 (donecb (plist-get args :on-done))
 	 (provider (if current-prefix-arg

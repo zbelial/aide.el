@@ -8,7 +8,7 @@
 
 ;; Homepage: https://github.com/zbelial/aidee.el.git
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (ellama "0.12.7"))
+;; Package-Requires: ((emacs "29.1") (llm "0.6.0") (spinner "1.7.4") (compat "29.1"))
 ;; Keywords: AI LLM Emacs Coding
 
 

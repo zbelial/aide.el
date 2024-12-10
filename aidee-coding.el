@@ -8,7 +8,6 @@
 
 ;; Homepage: https://github.com/zbelial/aidee.el.git
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (ellama "0.12.7"))
 ;; Keywords: AI LLM Emacs Coding
 
 
@@ -31,6 +30,7 @@
 
 
 ;;; Code:
+(require 'cl-lib)
 (require 'aidee-core)
 
 (defcustom aidee-coding-provider nil
@@ -356,6 +356,24 @@ The car of the pair is context, and the cdr is context.body."
         nil))))
 
 ;;;; Repomap
+(cl-defstruct aidee-project
+  "A structure that represents aidee project.
+
+ROOT is the project root, string.
+
+SESSION is the `aidee-session' for this project."
+  root
+  session
+  )
+
+(defvar aidee--projects (make-hash-table :test #'equal)
+  "Each project (represented by project root) and
+its `aidee-project'."
+  )
+
+(defvar-local aidee--local-context nil
+  "Each file can have its own context.")
+
 
 
 (provide 'aidee-coding)
