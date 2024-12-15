@@ -63,12 +63,7 @@
   :group 'aidee
   :type 'integer)
 
-(defcustom aidee-provider
-  (progn
-    (declare-function make-llm-ollama "llm-ollama")
-    (require 'llm-ollama)
-    (make-llm-ollama
-     :chat-model "zephyr" :embedding-model "zephyr"))
+(defcustom aidee-provider nil
   "Backend LLM provider."
   :group 'aidee
   :type '(sexp :validate 'llm-standard-provider-p))

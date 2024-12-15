@@ -356,6 +356,30 @@ The car of the pair is context, and the cdr is context.body."
         nil))))
 
 ;;;; Repomap
+
+(defcustom aidee-file-context-function nil
+  "A function to retrieve files the current file
+depends on. The function takes one argument, current
+file's name, and returns filenames as a list."
+  :group 'aidee
+  :type 'function)
+
+
+;; There are there different kinds of context in aidee.
+;; Here context means file skeleton or file content (in
+;; this case, it's because file skeleton cannot be got).
+
+;; The first kind is for projects, and is added manually.
+;; This kind is stored in `aidee-project''s session.
+
+;; The second kind is for files and is added automatically,
+;; this kind of context is files retrieved by calling
+;; `aidee-file-context-function'.
+;; This kind is stored in `aidee--local-context-automatically'.
+
+;; The third kind is also for files and is added manually.
+;; This kind is stored in `aidee--local-context-manually'.
+
 (cl-defstruct aidee-project
   "A structure that represents aidee project.
 
@@ -366,14 +390,16 @@ SESSION is the `aidee-session' for this project."
   session
   )
 
+(defvar-local aidee--local-context-automatically nil
+  "File context which is added automatically.")
+
+(defvar-local aidee--local-context-manually nil
+  "File context which is added manually.")
+
 (defvar aidee--projects (make-hash-table :test #'equal)
   "Each project (represented by project root) and
 its `aidee-project'."
   )
-
-(defvar-local aidee--local-context nil
-  "Each file can have its own context.")
-
 
 
 (provide 'aidee-coding)
