@@ -326,6 +326,46 @@ Extract profession from this message. Be short and concise."
 		 providers nil nil #'string=)))
     (setq aidee--current-session-id nil)))
 
+;;;; Other routines
+(defconst aidee--uri-path-allowed-chars
+  (let ((vec (copy-sequence url-path-allowed-chars)))
+    (aset vec ?: nil)
+    vec)
+  "Like `url-path-allows-chars' but more restrictive.")
+
+(defun aidee--path-to-uri (path)
+  "URIfy PATH."
+  (let* ((truepath (file-truename path))
+         (full-name (directory-file-name (file-local-name truepath))))
+    (if (eq system-type 'windows-nt)
+        (let ((label (url-type (url-generic-parse-url path)))
+              prefix)
+          (setq prefix (concat label ":"))
+          (concat "file:///"
+                  prefix
+                  (url-hexify-string
+                   (substring full-name (length prefix))
+                   aidee--uri-path-allowed-chars)))
+      (concat "file://"
+              (url-hexify-string
+               ;; Again watch out for trampy paths.
+               (directory-file-name (file-local-name truepath))
+               aidee--uri-path-allowed-chars)))))
+
+(defun aidee--uri-to-path (uri)
+  "Convert URI to a file path."
+  (when (keywordp uri)
+    (setq uri (substring (symbol-name uri) 1)))
+  (let ((retval (url-unhex-string (url-filename (url-generic-parse-url uri)))))
+    (if (eq system-type 'windows-nt)
+        (substring retval 1)
+      retval)))
+
+(defun aidee--root-uri ()
+  (when-let* ((proj (project-current))
+              (root-uri (project-root proj)))
+    (aidee--path-to-uri root-uri)))
+
 (provide 'aidee-utils)
 
 ;; Local Variables:

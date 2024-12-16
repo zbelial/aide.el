@@ -32,6 +32,7 @@
 ;;; Code:
 (require 'cl-lib)
 (require 'aidee-core)
+(require 'aidee-utils)
 
 (defcustom aidee-coding-provider nil
   "LLM provider for coding tasks."
@@ -168,11 +169,12 @@ buffer."
 
 ;;;; File skeleton
 
-(cl-defstruct aidee-buffer-skeleton
-  (bufname)
+(cl-defstruct aidee-file-skeleton
+  (filename)
   (skeleton)
   (timestamp))
 
+;; TODO explain queries
 (setq aidee--treesit-language-queries
       '((python . (("class_definition" (class_definition ":" @context.body @context.surrounding.start body: (_)) @context)
                    ("function_definition" (function_definition ":" @context.body @context.surrounding.start body: (_)) @context)))
@@ -200,9 +202,9 @@ buffer."
 (defvar-local aidee--buffer-skeleton nil
   "Skeleton of current buffer.")
 
-(defvar aidee--buffer-skeletons (make-hash-table :test #'equal)
-  "Buffers' skeleton in current project.
-Key is file name, value is of type `aidee-buffer-skeleton'.")
+(defvar aidee--file-skeletons (make-hash-table :test #'equal)
+  "Buffers' skeleton.
+Key is file name, value is of type `aidee-file-skeleton'.")
 
 (defvar aidee-treesit-suffix-language-map (make-hash-table :test #'equal)
   "Use file name suffix to determine language.")
@@ -357,7 +359,7 @@ The car of the pair is context, and the cdr is context.body."
 
 ;;;; Repomap
 
-(defcustom aidee-file-context-function nil
+(defcustom aidee-file-deps-function nil
   "A function to retrieve files the current file
 depends on. The function takes one argument, current
 file's name, and returns filenames as a list."
@@ -374,7 +376,7 @@ file's name, and returns filenames as a list."
 
 ;; The second kind is for files and is added automatically,
 ;; this kind of context is files retrieved by calling
-;; `aidee-file-context-function'.
+;; `aidee-file-deps-function'.
 ;; This kind is stored in `aidee--local-context-automatically'.
 
 ;; The third kind is also for files and is added manually.
@@ -401,6 +403,21 @@ SESSION is the `aidee-session' for this project."
 its `aidee-project'."
   )
 
+(defun aidee--retrieve-file-deps-by-lspce (filename)
+  (when (ignore-errors
+          (require 'lspce))
+    ;; Open FILENAME and enable `lspce-mode' in its buffer.
+    
+    ;; Use textDocument/documentSymbol to query desired symbols.
+    ;; Filter symbols with kind and get symbol's start position from selectionRange.
+
+    ;; Retrieve incoming calls and get files that directly depend on FILENAME.
+
+    ;; Retrieve outgoning calls and get files that FILENAME directly depends on.
+
+    ;; Merge and dedup
+    )
+  )
 
 (provide 'aidee-coding)
 
