@@ -366,6 +366,30 @@ Extract profession from this message. Be short and concise."
               (root-uri (project-root proj)))
     (aidee--path-to-uri root-uri)))
 
+(defmacro aidee-with-file-open-temporarily (file close-after-body &rest body)
+  "Load FILE and then evaluate BODY with FILE's buffer the current buffer.
+If FILE has not been loaded, and CLOSE-AFTER-BODY is not nil,
+then kill the buffer after evaluating BODY.
+The value returned is the value of the last form in BODY."
+  (declare (indent 1) (debug t))
+  (let ((tempvar-buffer (make-symbol "buffer"))
+        (tempvar-close-flag (make-symbol "close-flag"))
+        (tempvar-result (make-symbol "result")))
+    `(let ((,tempvar-buffer (get-file-buffer ,file))
+           (,tempvar-close-flag nil)
+           (,tempvar-result nil))
+       (if ,tempvar-buffer
+           (setq ,tempvar-close-flag nil)
+         (when ,close-after-body
+           (setq ,tempvar-close-flag t))
+         (setq ,tempvar-buffer (find-file-noselect ,file)))
+       (with-current-buffer ,tempvar-buffer
+         (setq ,tempvar-result (progn ,@body))
+         (when ,tempvar-close-flag
+           (save-buffer ,tempvar-buffer)
+           (kill-buffer ,tempvar-buffer))
+         ,tempvar-result))))
+
 (provide 'aidee-utils)
 
 ;; Local Variables:

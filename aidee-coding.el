@@ -403,19 +403,77 @@ SESSION is the `aidee-session' for this project."
 its `aidee-project'."
   )
 
+(defun aidee--retrieve-file-deps-by-lspce-2 ()
+  (cl-labels
+      ((lsp--call-hierarchy (method item tag)
+         (let (children)
+           (when-let* ((response (lspce--request method (list :item item))))
+             (setq children (seq-map (lambda (item)
+                                       (gethash tag item))
+                                     response)))
+           children)))
+    (let (root
+          root-nodes
+          (root-uri lspce--root-uri)
+          (lsp-type lspce--lsp-type)
+          result)
+      (setq root (when (lspce--server-capable-chain "callHierarchyProvider")
+                   (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams))))
+      (when root
+        )
+      ))
+  )
+
 (defun aidee--retrieve-file-deps-by-lspce (filename)
-  (when (ignore-errors
-          (require 'lspce))
-    ;; Open FILENAME and enable `lspce-mode' in its buffer.
-    
-    ;; Use textDocument/documentSymbol to query desired symbols.
-    ;; Filter symbols with kind and get symbol's start position from selectionRange.
+  (when (and (ignore-errors
+               (require 'lspce))
+             (file-exists-p filename))
+    (aidee-with-file-open-temporarily
+        filename t
+        (let (filenames
+              symbols)
+          ;; Open FILENAME and enable `lspce-mode' in its buffer.
+          (ignore-errors
+            (unless lspce-mode
+              (lspce-mode +1)))
 
-    ;; Retrieve incoming calls and get files that directly depend on FILENAME.
+          (when lspce-mode
+            (when-let* ((response (lspce--request
+                                   "textDocument/documentSymbol"
+                                   (list :textDocument
+                                         (lspce--textDocumentIdenfitier (lspce--uri))))))
+              (cl-dolist (symbol response)
+                (let ((kind (gethash "kind" symbol))
+                      (children (gethash "children" symbol)))
+                  ;; 5 class
+                  ;; 6 method
+                  ;; 12 function
+                  (when (member kind '(5 6 12))
+                    (push symbol symbols))
+                  (when children
+                    (cl-dolist (c children)
+                      (when (member (gethash "kind" c) '(5 6 12))
+                        (push c symbols)))))))
+            (save-excursion
+              (save-restriction
+                (cl-dolist (s symbols)
+                  (let* ((selectionRange (gethash "selectionRange" s))
+                         (start (gethash "start" selectionRange))
+                         (pos (lspce--lsp-position-to-point start)))
+                    (goto-char pos)
+                    )
+                  )))
+            )
+          
+          ;; Use textDocument/documentSymbol to query desired symbols.
+          ;; Filter symbols with kind and get symbol's start position from selectionRange.
 
-    ;; Retrieve outgoning calls and get files that FILENAME directly depends on.
+          ;; Retrieve incoming calls and get files that directly depend on FILENAME.
 
-    ;; Merge and dedup
+          ;; Retrieve outgoning calls and get files that FILENAME directly depends on.
+
+          ;; Merge and dedup filenames
+          ))
     )
   )
 
