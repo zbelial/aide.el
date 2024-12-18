@@ -199,8 +199,8 @@ buffer."
           (setq result (append result (cdr query))))))
     result))
 
-(defvar-local aidee--buffer-skeleton nil
-  "Skeleton of current buffer.")
+(defvar-local aidee--file-skeleton nil
+  "Skeleton of current buffer's file.")
 
 (defvar aidee--file-skeletons (make-hash-table :test #'equal)
   "Buffers' skeleton.
@@ -367,7 +367,7 @@ file's name, and returns filenames as a list."
   :type 'function)
 
 
-;; There are there different kinds of context in aidee.
+;; There are four different kinds of context in aidee.
 ;; Here context means file skeleton or file content (in
 ;; this case, it's because file skeleton cannot be got).
 
@@ -381,6 +381,9 @@ file's name, and returns filenames as a list."
 
 ;; The third kind is also for files and is added manually.
 ;; This kind is stored in `aidee--local-context-manually'.
+
+;; The forth kind is the current file, which is stored in
+;; `aidee--file-skeleton'.
 
 (cl-defstruct aidee-project
   "A structure that represents aidee project.
@@ -400,30 +403,44 @@ SESSION is the `aidee-session' for this project."
 
 (defvar aidee--projects (make-hash-table :test #'equal)
   "Each project (represented by project root) and
-its `aidee-project'."
-  )
+its `aidee-project'.")
 
-(defun aidee--retrieve-file-deps-by-lspce-2 ()
+(defun aidee--retrieve-calls-by-lspce ()
   (cl-labels
       ((lsp--call-hierarchy (method item tag)
-         (let (children)
+         (let (calls)
            (when-let* ((response (lspce--request method (list :item item))))
-             (setq children (seq-map (lambda (item)
-                                       (gethash tag item))
-                                     response)))
-           children)))
-    (let (root
-          root-nodes
-          (root-uri lspce--root-uri)
+             (setq calls (seq-map (lambda (item)
+                                    (gethash tag item))
+                                  response)))
+           calls)))
+    (let ((root-uri lspce--root-uri)
           (lsp-type lspce--lsp-type)
-          result)
-      (setq root (when (lspce--server-capable-chain "callHierarchyProvider")
-                   (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams))))
-      (when root
-        )
-      ))
-  )
+          incomings
+          outgoings)
+      (when-let* ((root-items (when (lspce--server-capable-chain "callHierarchyProvider")
+                                (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))))
+        (let ((method "callHierarchy/incomingCalls")
+              (tag "from"))
+          (cl-dolist (item root-items)
+            (setq incomings (append incomings (lsp--call-hierarchy method item tag)))))
+        (let ((method "callHierarchy/outgoingCalls")
+              (tag "to"))
+          (cl-dolist (item root-items)
+            (setq outgoings (append outgoings (lsp--call-hierarchy method item tag))))))
+      (list incomings outgoings))))
 
+;; NOTE How `aidee--retrieve-file-deps-by-lspce' works:
+;; - Open FILENAME and enable `lspce-mode' in its buffer.
+
+;; - Use textDocument/documentSymbol to query desired symbols.
+;;   Filter symbols with kind and get symbol's start position from selectionRange.
+
+;; - Retrieve incoming calls and get files that directly depend on FILENAME.
+
+;; - Retrieve outgoning calls and get files that FILENAME directly depends on.
+
+;; - Merge and dedup filenames
 (defun aidee--retrieve-file-deps-by-lspce (filename)
   (when (and (ignore-errors
                (require 'lspce))
@@ -431,8 +448,11 @@ its `aidee-project'."
     (aidee-with-file-open-temporarily
         filename t
         (let (filenames
-              symbols)
-          ;; Open FILENAME and enable `lspce-mode' in its buffer.
+              symbols
+              incomings
+              outgoings
+              calls
+              deps)
           (ignore-errors
             (unless lspce-mode
               (lspce-mode +1)))
@@ -461,21 +481,15 @@ its `aidee-project'."
                          (start (gethash "start" selectionRange))
                          (pos (lspce--lsp-position-to-point start)))
                     (goto-char pos)
-                    )
-                  )))
-            )
+                    (setq calls (aidee--retrieve-calls-by-lspce))
+                    (setq incomings (append incomings (nth 0 calls))
+                          outgoings (append outgoings (nth 1 calls)))))))
+            (cl-dolist (item (append incomings outgoings))
+              (when-let* ((uri (gethash "uri" item)))
+                (when (string-prefix-p lspce--root-uri uri)
+                  (cl-pushnew (aidee--uri-to-path uri) deps)))))
           
-          ;; Use textDocument/documentSymbol to query desired symbols.
-          ;; Filter symbols with kind and get symbol's start position from selectionRange.
-
-          ;; Retrieve incoming calls and get files that directly depend on FILENAME.
-
-          ;; Retrieve outgoning calls and get files that FILENAME directly depends on.
-
-          ;; Merge and dedup filenames
-          ))
-    )
-  )
+          (delete-dups deps)))))
 
 (provide 'aidee-coding)
 
