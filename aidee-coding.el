@@ -392,14 +392,18 @@ ROOT is the project root, string.
 
 SESSION is the `aidee-session' for this project."
   root
+  context
+  provider
   session
   )
 
 (defvar-local aidee--local-context-automatically nil
-  "File context which is added automatically.")
+  "File context which is added automatically.
+This is a list of filename.")
 
 (defvar-local aidee--local-context-manually nil
-  "File context which is added manually.")
+  "File context which is added manually.
+This is a list of filename.")
 
 (defvar aidee--projects (make-hash-table :test #'equal)
   "Each project (represented by project root) and
@@ -485,11 +489,73 @@ its `aidee-project'.")
                     (setq incomings (append incomings (nth 0 calls))
                           outgoings (append outgoings (nth 1 calls)))))))
             (cl-dolist (item (append incomings outgoings))
-              (when-let* ((uri (gethash "uri" item)))
-                (when (string-prefix-p lspce--root-uri uri)
-                  (cl-pushnew (aidee--uri-to-path uri) deps)))))
-          
+              (when-let* ((uri (gethash "uri" item))
+                          (path (aidee--uri-to-path uri)))
+                (when (and (string-prefix-p lspce--root-uri uri)
+                           (not (string-equal filename path)))
+                  (push path deps)))))
           (delete-dups deps)))))
+
+;;;###autoload
+(defun aidee-add-local-context ()
+  "Add a file to local manual context."
+  (interactive)
+  (let (filename)
+    (setq filename (read-file-name "Add a file to local context: "))
+    (when (and filename
+               (file-exists-p filename))
+      (setq aidee--local-context-manually (delete-dups (push filename aidee--local-context-manually))))))
+
+;;;###autoload
+(defun aidee-remove-local-context ()
+  "Remove a file from local manual context."
+  (interactive)
+  (let (filename)
+    (setq filename (completing-read "Remove a file from local context: "
+                                    aidee--local-context-manually))
+    (when (and filename
+               (file-exists-p filename))
+      (setq aidee--local-context-manually (delete filename aidee--local-context-manually)))))
+
+;;;###autoload
+(defun aidee-add-project-context ()
+  "Add a file to project context."
+  (interactive)
+  (let ((root-uri (aidee--root-uri))
+        filename
+        context
+        project
+        session)
+    (setq filename (read-file-name "Add a file to local context: "))
+    (when (and filename
+               (file-exists-p filename))
+      (setq project (gethash root-uri aidee--projects))
+      (unless project
+        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session nil)))
+      (setq context (aidee-project-context project))
+      (setq context (delete-dups (push filename context)))
+      (setf (aidee-project-context project) context)
+      (puthash root-uri project aidee--projects))))
+
+;;;###autoload
+(defun aidee-remove-project-context ()
+  "Remove a file from project context."
+  (interactive)
+  (let ((root-uri (aidee--root-uri))
+        filename
+        context
+        project)
+    (setq project (gethash root-uri aidee--projects))
+    (when project
+      (setq context (aidee-project-context project))
+      (setq filename (completing-read "Remove a file from project context: " context))
+      (when (and filename
+                 (file-exists-p filename))
+        (setf (aidee-project-context project) (delete filename context))))))
+
+(defun aidee--file-context (filename &optional current automatic manual project)
+  "Calculate file context of FILENAME."
+  )
 
 (provide 'aidee-coding)
 
