@@ -390,6 +390,9 @@ The value returned is the value of the last form in BODY."
            (kill-buffer ,tempvar-buffer))
          ,tempvar-result))))
 
+(defun aidee--current-timestamp ()
+  (time-convert (current-time) 'integer))
+
 (provide 'aidee-utils)
 
 ;; Local Variables:

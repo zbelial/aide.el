@@ -32,7 +32,7 @@
 ;;; Code:
 
 
-(eval-and-compile
+(eval-when-compile
   (require 'cl-macs))
 (require 'cl-lib)
 

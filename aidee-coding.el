@@ -33,6 +33,7 @@
 (require 'cl-lib)
 (require 'aidee-core)
 (require 'aidee-utils)
+(require 'cache)
 
 (defcustom aidee-coding-provider nil
   "LLM provider for coding tasks."
@@ -202,9 +203,42 @@ buffer."
 (defvar-local aidee--file-skeleton nil
   "Skeleton of current buffer's file.")
 
-(defvar aidee--file-skeletons (make-hash-table :test #'equal)
+(defun aidee--file-modified-timestamp (filename)
+  (let ((timestamp 0))
+    (when (and filename
+               (file-exists-p filename))
+      (time-convert (file-attribute-modification-time (file-attributes filename)) 'integer))))
+
+(defun aidee--file-skeleton-init-fn (data)
+  "DATA is a filename."
+  (aidee--file-modified-timestamp data))
+
+(defun aidee--file-skeleton-test-fn (info data)
+  "INFO is what `aidee--file-skeleton-init-fn' returns.
+DATA is a filename."
+  (> (aidee--file-modified-timestamp data) info))
+
+(defvar aidee--file-skeletons (cache-make-cache #'aidee--file-skeleton-init-fn
+                                                #'aidee--file-skeleton-test-fn
+                                                #'ignore
+                                                :test #'equal)
   "Buffers' skeleton.
 Key is file name, value is of type `aidee-file-skeleton'.")
+
+(defun aidee--file-skeleton (filename)
+  "Get FILENAME's skeleton.
+Return nil if no treesitter support for FILENAME."
+  (let ((file-skeleton (cache-get filename aidee--file-skeletons filename))
+        skeleton)
+    (unless file-skeleton
+      (progn
+        (setq skeleton (aidee--retrieve-file-skeleton filename))
+        (setq file-skeleton (make-aidee-file-skeleton :filename filename
+                                                      :skeleton skeleton
+                                                      :timestamp (aidee--current-timestamp)))
+        (cache-put filename file-skeleton aidee--file-skeletons filename)))
+    file-skeleton))
+
 
 (defvar aidee-treesit-suffix-language-map (make-hash-table :test #'equal)
   "Use file name suffix to determine language.")
@@ -356,6 +390,11 @@ The car of the pair is context, and the cdr is context.body."
             aidee--travel-result)
         (message "parser or node types are nil")
         nil))))
+
+(defun aidee--retrieve-file-skeleton (filename)
+  (aidee-with-file-open-temporarily
+      filename t
+      (aidee--retrieve-buffer-skeleton)))
 
 ;;;; Repomap
 
@@ -553,8 +592,37 @@ its `aidee-project'.")
                  (file-exists-p filename))
         (setf (aidee-project-context project) (delete filename context))))))
 
-(defun aidee--file-context (filename &optional current automatic manual project)
-  "Calculate file context of FILENAME."
+(defun aidee--file-context (&optional automatic manual project)
+  "Calculate context of current buffer file."
+  (with-current-buffer (current-buffer)
+    (let* ((filename (buffer-file-name))
+           (root-uri (aidee--root-uri))
+           (proj (gethash root-uri aidee--projects))
+           deps
+           context)
+      (when filename
+        (setq deps (list filename))
+        (cond
+         (automatic
+          (setq deps (append deps aidee--local-context-automatically)))
+         (manual
+          (setq deps (append deps aidee--local-context-manually)))
+         ((and project
+               proj)
+          (setq deps (append deps (aidee-project-context proj))))))
+      (cl-dolist (dep deps)
+        ;; TODO
+        )
+      deps)))
+
+(defun aidee--project-context ()
+  "Calculate context of current buffer's project."
+  (with-current-buffer (current-buffer)
+    (let ((filename (buffer-file-name))
+          (root-uri (aidee--root-uri))
+          context)
+      )
+    )
   )
 
 (provide 'aidee-coding)
