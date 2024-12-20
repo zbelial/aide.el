@@ -539,9 +539,11 @@ its `aidee-project'.")
 (defun aidee-add-local-context ()
   "Add a file to local manual context."
   (interactive)
-  (let (filename)
+  (let ((root-uri (aidee--root-uri))
+        filename)
     (setq filename (read-file-name "Add a file to local context: "))
     (when (and filename
+               root-uri
                (file-exists-p filename))
       (setq aidee--local-context-manually (delete-dups (push filename aidee--local-context-manually))))))
 
@@ -556,6 +558,14 @@ its `aidee-project'.")
                (file-exists-p filename))
       (setq aidee--local-context-manually (delete filename aidee--local-context-manually)))))
 
+(defun aidee--project (root-uri)
+  (when root-uri
+    (let ((project (gethash root-uri aidee--projects)))
+      (unless
+          (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session nil))
+        (puthash root-uri project aidee--projects))
+      project)))
+
 ;;;###autoload
 (defun aidee-add-project-context ()
   "Add a file to project context."
@@ -567,14 +577,14 @@ its `aidee-project'.")
         session)
     (setq filename (read-file-name "Add a file to local context: "))
     (when (and filename
+               root-uri
                (file-exists-p filename))
-      (setq project (gethash root-uri aidee--projects))
-      (unless project
-        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session nil)))
-      (setq context (aidee-project-context project))
-      (setq context (delete-dups (push filename context)))
-      (setf (aidee-project-context project) context)
-      (puthash root-uri project aidee--projects))))
+      (setq project (aidee--project root-uri))
+      (when project
+        (setq context (aidee-project-context project))
+        (setq context (delete-dups (push filename context)))
+        (setf (aidee-project-context project) context)
+        (puthash root-uri project aidee--projects)))))
 
 ;;;###autoload
 (defun aidee-remove-project-context ()
@@ -584,7 +594,7 @@ its `aidee-project'.")
         filename
         context
         project)
-    (setq project (gethash root-uri aidee--projects))
+    (setq project (aidee--project root-uri))
     (when project
       (setq context (aidee-project-context project))
       (setq filename (completing-read "Remove a file from project context: " context))
@@ -597,10 +607,12 @@ its `aidee-project'.")
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
            (root-uri (aidee--root-uri))
-           (proj (gethash root-uri aidee--projects))
+           (proj (aidee--project root-uri))
+           file-skeleton
            deps
            context)
-      (when filename
+      (when (and filename
+                 root-uri)
         (setq deps (list filename))
         (cond
          (automatic
@@ -609,21 +621,39 @@ its `aidee-project'.")
           (setq deps (append deps aidee--local-context-manually)))
          ((and project
                proj)
-          (setq deps (append deps (aidee-project-context proj))))))
-      (cl-dolist (dep deps)
-        ;; TODO
-        )
-      deps)))
+          (setq deps (append deps (aidee-project-context proj)))))
+        (setq deps (delete-dups deps))
+        (cl-dolist (dep deps)
+          (setq file-skeleton (aidee--file-skeleton dep))
+          (when file-skeleton
+            (setq context (concat context
+                                  (aidee-file-skeleton-filename file-skeleton)
+                                  ":\n"
+                                  (aidee-file-skeleton-skeleton file-skeleton)
+                                  "\n")))))
+      context)))
 
 (defun aidee--project-context ()
   "Calculate context of current buffer's project."
   (with-current-buffer (current-buffer)
-    (let ((filename (buffer-file-name))
-          (root-uri (aidee--root-uri))
-          context)
-      )
-    )
-  )
+    (let* ((filename (buffer-file-name))
+           (root-uri (aidee--root-uri))
+           (proj (aidee--project root-uri))
+           file-skeleton
+           deps
+           context)
+      (when (and filename
+                 proj)
+        (setq deps (delete-dups (append (list filename) (aidee-project-context proj))))
+        (cl-dolist (dep deps)
+          (setq file-skeleton (aidee--file-skeleton dep))
+          (when file-skeleton
+            (setq context (concat context
+                                  (aidee-file-skeleton-filename file-skeleton)
+                                  ":\n"
+                                  (aidee-file-skeleton-skeleton file-skeleton)
+                                  "\n")))))
+      context)))
 
 (provide 'aidee-coding)
 
