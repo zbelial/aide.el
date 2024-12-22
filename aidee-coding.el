@@ -46,11 +46,6 @@
   :group 'aidee
   :type 'string)
 
-(defcustom aidee-code-edit-prompt-template "Regarding the following code, %s, only output the result code in format ```language\n...\n```:\n```\n%s\n```\nWrite all the code in single code block."
-  "Prompt template for `aidee-code-edit'."
-  :group 'aidee
-  :type 'string)
-
 (defcustom aidee-code-improve-prompt-template "Enhance the following code, only output the result code in format ```language\n...\n```:\n```\n%s\n```\nWrite all the code in single code block."
   "Prompt template for `aidee-code-improve'."
   :group 'aidee
@@ -61,112 +56,337 @@
   :group 'aidee
   :type 'string)
 
-(defcustom aidee-code-add-prompt-template "Context: \n```\n%s\n```\nBased on this context, %s, only output the result in format ```\n...\n```\nWrite all the code in single code block."
-  "Prompt template for `aidee-code-add'."
+(defcustom aidee-code-explain-prompt-template "Context: \n```\n%s\n```\nBased on this context, explain the following code in a detailed way:\n```\n%s\n```"
+  "Prompt template for `aidee-code-explain'."
   :group 'aidee
   :type 'string)
 
-(defconst aidee--code-prefix
-  (rx (minimal-match
-       (zero-or-more anything) (literal "```") (zero-or-more anything) (+ (or "\n" "\r")))))
+(defcustom aidee-coding-language "English"
+  "Language for aidee coding."
+  :group 'aidee
+  :type 'string)
 
-(defconst aidee--code-suffix
-  (rx (minimal-match
-       (literal "```") (zero-or-more anything))))
+;; 3 placeholders: Context, user instrument and language.
+(defcustom aidee-project-code-edit-prompt-template "Context: \n```\n%s\n```\nBased on this context, act as an expert software developer, %s.
+Always use best practices when coding.
+Respect and use existing conventions, libraries, etc that are already present in the code base.
 
-(defun aidee--code-filter (text)
-  "Filter code prefix/suffix from TEXT."
-  ;; Trim left first as `string-trim' trims from the right and ends up deleting all the code.
-  (string-trim-right (string-trim-left text aidee--code-prefix) aidee--code-suffix))
+You NEVER leave comments describing code without implementing it!
+You always COMPLETELY IMPLEMENT the needed code!
+
+Take requests for changes to the supplied code.
+If the request is ambiguous, ask questions.
+
+Always reply to the user in %s.
+
+Once you understand the request you MUST:
+
+1. Decide if you need to propose *SEARCH/REPLACE* edits to any files that haven't been added to the chat. You can create new files without asking!
+
+2. Think step-by-step and explain the needed changes in a few short sentences.
+
+3. Describe each change with a *SEARCH/REPLACE block* per rules below.
+
+All changes to files must use this *SEARCH/REPLACE block* format.
+ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
+
+# *SEARCH/REPLACE block* Rules:
+
+Every *SEARCH/REPLACE block* must use this format:
+1. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
+2. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
+3. The start of search block: <<<<<<< SEARCH
+4. A contiguous chunk of lines to search for in the existing source code
+5. The dividing line: =======
+6. The lines to replace into the source code
+7. The end of the replace block: >>>>>>> REPLACE
+8. The closing fence: ```
+
+Use the *FULL* file path, as shown to you by the user.
+
+Every *SEARCH* section must *EXACTLY MATCH* the existing file content, character for character, including all comments, docstrings, etc.
+If the file contains code or other data wrapped/escaped in json/xml/quotes or other containers, you need to propose edits to the literal contents of the file, including the container markup.
+
+*SEARCH/REPLACE* blocks will *only* replace the first match occurrence.
+Including multiple unique *SEARCH/REPLACE* blocks if needed.
+Include enough lines in each SEARCH section to uniquely match each set of lines that need to change.
+
+Keep *SEARCH/REPLACE* blocks concise.
+Break large *SEARCH/REPLACE* blocks into a series of smaller blocks that each change a small portion of the file.
+Include just the changing lines, and a few surrounding lines if needed for uniqueness.
+Do not include long runs of unchanging lines in *SEARCH/REPLACE* blocks.
+
+To move code within a file, use 2 *SEARCH/REPLACE* blocks: 1 to delete it from its current location, 1 to insert it in the new location.
+
+Pay attention to which filenames the user wants you to edit, especially if they are asking you to create a new file.
+
+If you want to put code in a new file, use a *SEARCH/REPLACE block* with:
+- A new file path, including dir name if needed
+- An empty `SEARCH` section
+- The new file's contents in the `REPLACE` section
+
+You NEVER leave comments describing code without implementing it!
+You always COMPLETELY IMPLEMENT the needed code!
+
+ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
+
+"
+  "Prompt template for `aidee-project-code-edit'."
+  :group 'aidee
+  :type 'string)
+
+(defvar aidee--code-search-label "<<<<<<< SEARCH")
+(defvar aidee--code-replace-label ">>>>>>> REPLACE")
+
+(defconst aidee--project-code-search-replace-pattern
+  (rx
+   (seq
+    ;;code fence start
+    (minimal-match
+     (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
+    ;;SEARCH
+    (minimal-match
+     (eval aidee--code-search-label) (+ (or "\n" "\r")))
+    (group (minimal-match
+            (zero-or-more anything)))
+    ;; =======
+    (literal "=======") (+ (or "\n" "\r"))
+    ;;REPLACE
+    (group (minimal-match
+            (zero-or-more anything)))
+    (minimal-match
+     (eval aidee--code-replace-label) (+ (or "\n" "\r")))
+    ;;code fence end
+    (literal "```")))
+  )
+
+(defconst aidee--project-code-edit-pattern
+  (rx
+   ;;filename fence start
+   (minimal-match
+    (literal "```") (zero-or-more alpha) (+ (or "\n" "\r")))
+   ;;filename
+   (group (minimal-match
+           (one-or-more (not (any "\n" "\r")))))
+   (+ (or "\n" "\r"))
+   ;;filename fence end
+   (zero-or-more (seq (literal "```") (+ (or "\n" "\r"))))
+   (one-or-more
+    (seq
+     ;;code fence start
+     (minimal-match
+      (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
+     ;;SEARCH
+     (minimal-match
+      (eval aidee--code-search-label) (+ (or "\n" "\r")))
+     (group (minimal-match
+             (zero-or-more anything)))
+     ;; =======
+     (literal "=======") (+ (or "\n" "\r"))
+     ;;REPLACE
+     (group (minimal-match
+             (zero-or-more anything)))
+     (minimal-match
+      (eval aidee--code-replace-label) (+ (or "\n" "\r")))
+     ;;code fence end
+     (literal "```")))))
+
+;; copied from s.el's s-match and modified
+(defun aidee--match (regexp s &optional start)
+  "When the given expression matches the string, this function returns a list
+of the whole matching string and a string for each matched subexpressions.
+Subexpressions that didn't match are represented by nil elements
+in the list, except that non-matching subexpressions at the end
+of REGEXP might not appear at all in the list.  That is, the
+returned list can be shorter than the number of subexpressions in
+REGEXP plus one.  If REGEXP did not match the returned value is
+an empty list (nil).
+
+When START is non-nil the search will start at that index."
+  (declare (side-effect-free t))
+  (save-match-data
+    (if (string-match regexp s start)
+        (let ((match-data-list (match-data))
+              result)
+          (message "match-data-list: %s" match-data-list)
+          (while match-data-list
+            (let* ((beg (car match-data-list))
+                   (end (cadr match-data-list))
+                   (subs (if (and beg end) (list (substring s beg end) beg end) nil)))
+              (setq result (cons subs result))
+              (setq match-data-list
+                    (cddr match-data-list))))
+          (nreverse result)))))
+
+(cl-defstruct aidee--file-edit
+  search
+  replace)
+
+(cl-defstruct aidee--file-action
+  filename
+  edits)
+
+(defun aidee--count-substring (substring string)
+  "Count the number of occurrences of SUBSTRING in STRING."
+  (let ((count 0)
+        (start 0))
+    (while (string-match substring string start)
+      (setq count (1+ count))
+      (setq start (match-end 0)))
+    count))
+
+(defun aidee--project-code-edit-parse-search-replace (text)
+  (let ((edits nil)
+        search replace
+        edit
+        start
+        stop?
+        match-result)
+    (while (not stop?)
+      (setq match-result (aidee--match aidee--project-code-search-replace-pattern text start))
+      (if (and match-result
+               (length= match-result 3))
+          (progn
+            (setq start (nth 2 (nth 0 match-result))
+                  search (nth 0 (nth 1 match-result))
+                  replace (nth 0 (nth 2 match-result)))
+            (setq edit (make-aidee--file-edit :search search :replace replace))
+            (push edit edits))
+        (setq stop? t)))
+    (nreverse edits)))
+
+(defun aidee--project-code-edit-parse-response (text)
+  (let ((actions nil)
+        filename
+        action
+        match-result
+        edits
+        edit-text
+        filename-end
+        total-end
+        start
+        stop?)
+    (if (= (aidee--count-substring aidee--code-search-label text)
+           (aidee--count-substring aidee--code-replace-label text))
+        (progn
+          (while (not stop?)
+            (progn
+              (setq match-result (aidee--match aidee--project-code-edit-pattern text start))
+              (if (and match-result
+                       (length> match-result 2))
+                  (progn
+                    (setq total-end (nth 2 (nth 0 match-result))
+                          filename-end (nth 2 (nth 1 match-result))
+                          filename (nth 0 (nth 1 match-result)))
+                    (setq edit-text (substring-no-properties text filename-end total-end))
+                    (setq edits (aidee--project-code-edit-parse-search-replace edit-text))
+                    (setq action nil)
+                    (when (and filename
+                               edits)
+                      (setq action (make-aidee--file-action :filename filename
+                                                            :edits edits))
+                      (push action actions))
+                    (setq start total-end))
+                (setq stop? t))))
+          (nreverse actions))
+      (message "Ill-formed response."))))
+
+(defun aidee--project-code-edit-done-callback (text &optional on-done)
+  (let ((actions (aidee--project-code-edit-parse-response text)))
+    (when actions
+      (cl-dolist (action actions)
+        (let ((filename (aidee--file-action-filename action))
+              (edits (aidee--file-action-edits action))
+              search
+              replace)
+          (aidee-with-file-open-temporarily
+              filename t
+              (cl-dolist (edit edits)
+                (setq search (aidee--file-edit-search edit)
+                      replace (aidee--file-edit-replace edit))
+                (if (length= search 0)
+                    (progn
+                      (goto-char (point-max))
+                      (insert replace))
+                  (query-replace search replace nil (point-min) (point-max))))
+              ))))))
+
+(defun aidee--project-code-edit-done-callback (text &optional on-done)
+  (let ((actions (aidee--project-code-edit-parse-response text)))
+    (when actions
+      (cl-dolist (action actions)
+        (let ((filename (aidee--file-action-filename action))
+              (edits (aidee--file-action-edits action))
+              content
+              oldbuf
+              tmpbuf
+              tmpcont
+              search
+              replace)
+          (aidee-with-file-open-temporarily
+              filename t
+              (setq oldbuf (current-buffer)
+                    content (buffer-substring-no-properties (point-min) (point-max)))
+              (setq tmpcont content)
+              (setq tmpbuf (generate-new-buffer " *temp* " t))
+              (cl-dolist (edit edits)
+                (setq search (aidee--file-edit-search edit)
+                      replace (aidee--file-edit-replace edit))
+                (cond
+                 ((and (length= search 0)
+                       (length= tmpcont 0))
+                  (setq tmpcont replace))
+                 ((length= search 0)
+                  (setq tmpcont (concat tmpcont replace)))
+                 (t
+                  (setq tmpcont (string-replace search replace tmpcont)))))
+              (with-current-buffer tmpbuf
+                (erase-buffer)
+                (insert tmpcont))
+              (ediff-buffers oldbuf tmpbuf)))))))
 
 ;;;###autoload
-(defun aidee-code-review ()
-  "Review code in selected region or current buffer."
+(defun aidee-project-code-edit (task)
+  "Do some coding edit in the project."
+  (interactive "sWhat needs to be done: ")
+  (let* ((root-uri (aidee--root-uri))
+         (project (aidee--project root-uri))
+         (context (aidee--file-context t t t))
+         session
+         session-id
+         session-file
+         buffer
+         text)
+    (when project
+      (setq session (aidee-project-session project))
+      (setq buffer (aidee-session-buffer session)
+            session-id (aidee-session-id session))
+      (unless (buffer-live-p buffer)
+        (setq session-file (aidee-session-file session))
+        (setq buffer (find-file-noselect session-file))
+        (setf (aidee-session-buffer session) buffer))
+      (aidee-stream
+       (format
+        aidee-project-code-edit-prompt-template
+        context
+        aidee-coding-language
+        task)
+       :provider aidee-coding-provider
+       :session-id session-id
+       :session session
+       :buffer buffer
+       :point (with-current-buffer buffer (goto-char (point-max)) (point))
+       :on-done #'aidee--project-code-edit-done-callback))))
+
+(defun aidee-code-explain ()
+  "Explain code in selected region or current buffer."
   (interactive)
-  (if (region-active-p)
-      (aidee-context-add-selection)
-    (aidee-context-add-buffer (current-buffer)))
-  (aidee-chat aidee-code-review-prompt-template nil :provider aidee-coding-provider))
-
-;;;###autoload
-(defun aidee-code-edit (change)
-  "Change selected code or code in current buffer according to provided CHANGE."
-  (interactive "sWhat needs to be changed in this code: ")
-  (let* ((beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point-max)))
-	 (text (buffer-substring-no-properties beg end)))
-    (kill-region beg end)
-    (aidee-stream
-     (format
-      aidee-code-edit-prompt-template
-      change text)
-     :provider aidee-coding-provider
-     :filter #'aidee--code-filter
-     :point beg)))
-
-;;;###autoload
-(defun aidee-code-improve ()
-  "Change selected code or code in current buffer according to provided CHANGE."
-  (interactive)
-  (let* ((beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point-max)))
-	 (text (buffer-substring-no-properties beg end)))
-    (kill-region beg end)
-    (aidee-stream
-     (format
-      aidee-code-improve-prompt-template
-      text)
-     :provider aidee-coding-provider
-     :filter #'aidee--code-filter
-     :point beg)))
-
-;;;###autoload
-(defun aidee-code-complete ()
-  "Complete selected code or code in current buffer."
-  (interactive)
-  (let* ((beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point)))
-	 (text (buffer-substring-no-properties beg end)))
-    (aidee-stream
-     (format
-      aidee-code-complete-prompt-template
-      text)
-     :provider aidee-coding-provider
-     :filter #'aidee--code-filter
-     :point end)))
-
-;;;###autoload
-(defun aidee-code-add (description)
-  "Add new code according to DESCRIPTION.
-Code will be generated with provided context from selected region or current
-buffer."
-  (interactive "sDescribe the code to be generated: ")
-  (let* ((beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point-max)))
-	 (text (buffer-substring-no-properties beg end)))
-    (aidee-stream
-     (format
-      aidee-code-add-prompt-template
-      text description)
-     :provider aidee-coding-provider
-     :filter #'aidee--code-filter)))
-
+  (let ((text (if (region-active-p)
+		  (buffer-substring-no-properties (region-beginning) (region-end))
+		(buffer-substring-no-properties (point-min) (point-max))))
+        (context (aidee--file-context nil nil nil)))
+    (aidee-instant (format aidee-code-explain-prompt-template context text)
+                   :provider aidee-coding-provider)))
 
 ;;;; File skeleton
 
@@ -560,11 +780,24 @@ its `aidee-project'.")
 
 (defun aidee--project (root-uri)
   (when root-uri
-    (let ((project (gethash root-uri aidee--projects)))
-      (unless
-          (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session nil))
+    (let ((project (gethash root-uri aidee--projects))
+          session)
+      (unless project
+        (setq session (aidee-new-session aidee-coding-provider root-uri))
+        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session session))
         (puthash root-uri project aidee--projects))
       project)))
+
+(defun aidee-project-refresh-session ()
+  (interactive)
+  (let* ((root-uri (lspce--root-uri))
+         project
+         session)
+    (when root-uri
+      (setq project (gethash root-uri aidee--projects))
+      (when project
+        (setq session (aidee-new-session aidee-coding-provider root-uri))
+        (setf (aidee-project-session project) session)))))
 
 ;;;###autoload
 (defun aidee-add-project-context ()
@@ -602,12 +835,12 @@ its `aidee-project'.")
                  (file-exists-p filename))
         (setf (aidee-project-context project) (delete filename context))))))
 
-(defun aidee--file-context (&optional automatic manual project)
+(defun aidee--file-context (&optional automatic-p manual-p project-p)
   "Calculate context of current buffer file."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
            (root-uri (aidee--root-uri))
-           (proj (aidee--project root-uri))
+           (project (aidee--project root-uri))
            file-skeleton
            deps
            context)
@@ -615,14 +848,15 @@ its `aidee-project'.")
                  root-uri)
         (setq deps (list filename))
         (cond
-         (automatic
+         (automatic-p
           (setq deps (append deps aidee--local-context-automatically)))
-         (manual
+         (manual-p
           (setq deps (append deps aidee--local-context-manually)))
-         ((and project
-               proj)
-          (setq deps (append deps (aidee-project-context proj)))))
-        (setq deps (delete-dups deps))
+         ((and project-p
+               project)
+          (setq deps (append deps (aidee-project-context project)))))
+        (setq deps (delete filename (delete-dups deps)))
+        (setq context (concat filename ":\n" (buffer-substring-no-properties (point-min) (point-max)) "\n\n"))
         (cl-dolist (dep deps)
           (setq file-skeleton (aidee--file-skeleton dep))
           (when file-skeleton
@@ -638,13 +872,14 @@ its `aidee-project'.")
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
            (root-uri (aidee--root-uri))
-           (proj (aidee--project root-uri))
+           (project (aidee--project root-uri))
            file-skeleton
            deps
            context)
       (when (and filename
-                 proj)
-        (setq deps (delete-dups (append (list filename) (aidee-project-context proj))))
+                 project)
+        (setq deps (delete-dups (aidee-project-context project)))
+        (setq context (concat filename ":\n" (buffer-substring-no-properties (point-min) (point-max)) "\n\n"))
         (cl-dolist (dep deps)
           (setq file-skeleton (aidee--file-skeleton dep))
           (when file-skeleton
@@ -652,7 +887,7 @@ its `aidee-project'.")
                                   (aidee-file-skeleton-filename file-skeleton)
                                   ":\n"
                                   (aidee-file-skeleton-skeleton file-skeleton)
-                                  "\n")))))
+                                  "\n\n")))))
       context)))
 
 (provide 'aidee-coding)
