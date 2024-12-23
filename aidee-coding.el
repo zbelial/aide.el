@@ -40,35 +40,35 @@
   :group 'aidee
   :type '(sexp :validate 'llm-standard-provider-p))
 
-;;;; Coding helpers
-(defcustom aidee-code-review-prompt-template "You are professional software engineer. Review provided code and make concise suggestions."
-  "Prompt template for `aidee-code-review'."
-  :group 'aidee
-  :type 'string)
-
-(defcustom aidee-code-improve-prompt-template "Enhance the following code, only output the result code in format ```language\n...\n```:\n```\n%s\n```\nWrite all the code in single code block."
-  "Prompt template for `aidee-code-improve'."
-  :group 'aidee
-  :type 'string)
-
-(defcustom aidee-code-complete-prompt-template "Continue the following code, only write new code in format ```language\n...\n```:\n```\n%s\n```\nWrite all the code in single code block."
-  "Prompt template for `aidee-code-complete'."
-  :group 'aidee
-  :type 'string)
-
-(defcustom aidee-code-explain-prompt-template "Context: \n```\n%s\n```\nBased on this context, explain the following code in a detailed way:\n```\n%s\n```"
-  "Prompt template for `aidee-code-explain'."
-  :group 'aidee
-  :type 'string)
-
 (defcustom aidee-coding-language "English"
   "Language for aidee coding."
   :group 'aidee
   :type 'string)
 
-;; 3 placeholders: Context, user instrument and language.
-(defcustom aidee-project-code-edit-prompt-template "Context: \n```\n%s\n```\nBased on this context, act as an expert software developer, %s.
-Always use best practices when coding.
+;;;; Coding helpers
+;; 3 placeholders: Context, user instrument and suffix.
+(defcustom aidee-project-code-prompt-template "Context: \n```\n%s\n```\nBased on this context, act as an expert software developer, %s. %s"
+  "Prompt template for all project code task."
+  :group 'aidee
+  :type 'string)
+
+(defcustom aidee-project-code-review-instruction-template "review the following code and make concise suggestions: \n```%s\n```"
+  "Prompt template for `aidee-project-code-review'."
+  :group 'aidee
+  :type 'string)
+
+(defcustom aidee-project-code-improve-instruction-template "enhance the following code: \n```%s\n```"
+  "Prompt template for `aidee-project-code-improve'."
+  :group 'aidee
+  :type 'string)
+
+(defcustom aidee-project-code-explain-instruction-template "explain the following code in a detailed way: \n```%s\n```"
+  "Prompt template for `aidee-project-code-explain'."
+  :group 'aidee
+  :type 'string)
+
+;; 1 placeholder(s): Language.
+(defcustom aidee-project-code-edit-suffix-template "Always use best practices when coding.
 Respect and use existing conventions, libraries, etc that are already present in the code base.
 
 You NEVER leave comments describing code without implementing it!
@@ -367,10 +367,10 @@ When START is non-nil the search will start at that index."
         (setf (aidee-session-buffer session) buffer))
       (aidee-stream
        (format
-        aidee-project-code-edit-prompt-template
+        aidee-project-code-prompt-template
         context
-        aidee-coding-language
-        task)
+        task
+        (format aidee-project-code-edit-suffix-template aidee-coding-language))
        :provider aidee-coding-provider
        :session-id session-id
        :session session
@@ -378,15 +378,74 @@ When START is non-nil the search will start at that index."
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'aidee--project-code-edit-done-callback))))
 
-(defun aidee-code-explain ()
+;;;###autoload
+(defun aidee-project-code-explain ()
   "Explain code in selected region or current buffer."
   (interactive)
   (let ((text (if (region-active-p)
 		  (buffer-substring-no-properties (region-beginning) (region-end))
 		(buffer-substring-no-properties (point-min) (point-max))))
         (context (aidee--file-context nil nil nil)))
-    (aidee-instant (format aidee-code-explain-prompt-template context text)
+    (aidee-instant (format
+                    aidee-project-code-prompt-template
+                    context
+                    (format aidee-project-code-explain-instruction-template text)
+                    "")
                    :provider aidee-coding-provider)))
+
+;;;###autoload
+(defun aidee-project-code-review ()
+  "Review code in selected region or current buffer."
+  (interactive)
+  (let ((text (if (region-active-p)
+		  (buffer-substring-no-properties (region-beginning) (region-end))
+		(buffer-substring-no-properties (point-min) (point-max))))
+        (context (aidee--file-context nil nil nil)))
+    (aidee-instant (format
+                    aidee-project-code-prompt-template
+                    context
+                    (format aidee-project-code-review-instruction-template text)
+                    "")
+                   :provider aidee-coding-provider)))
+
+;;;###autoload
+(defun aidee-project-code-improve ()
+  "Improve selected code or the code in current buffer."
+  (interactive)
+  (let* ((root-uri (aidee--root-uri))
+         (project (aidee--project root-uri))
+         (context (aidee--file-context t t t))
+         session
+         session-id
+         session-file
+         buffer
+         (beg (if (region-active-p)
+		  (region-beginning)
+		(point-min)))
+	 (end (if (region-active-p)
+		  (region-end)
+		(point-max)))
+	 (text (buffer-substring-no-properties beg end)))
+    (when project
+      (setq session (aidee-project-session project))
+      (setq buffer (aidee-session-buffer session)
+            session-id (aidee-session-id session))
+      (unless (buffer-live-p buffer)
+        (setq session-file (aidee-session-file session))
+        (setq buffer (find-file-noselect session-file))
+        (setf (aidee-session-buffer session) buffer))
+      (aidee-stream
+       (format
+        aidee-project-code-prompt-template
+        context
+        (format aidee-project-code-improve-prompt-template text)
+        (format aidee-project-code-edit-suffix-template aidee-coding-language))
+       :provider aidee-coding-provider
+       :session-id session-id
+       :session session
+       :buffer buffer
+       :point (with-current-buffer buffer (goto-char (point-max)) (point))
+       :on-done #'aidee--project-code-edit-done-callback))))
 
 ;;;; File skeleton
 
@@ -636,10 +695,10 @@ file's name, and returns filenames as a list."
 ;; The second kind is for files and is added automatically,
 ;; this kind of context is files retrieved by calling
 ;; `aidee-file-deps-function'.
-;; This kind is stored in `aidee--local-context-automatically'.
+;; This kind is stored in `aidee--file-context-automatically'.
 
 ;; The third kind is also for files and is added manually.
-;; This kind is stored in `aidee--local-context-manually'.
+;; This kind is stored in `aidee--file-context-manually'.
 
 ;; The forth kind is the current file, which is stored in
 ;; `aidee--file-skeleton'.
@@ -649,6 +708,10 @@ file's name, and returns filenames as a list."
 
 ROOT is the project root, string.
 
+CONTEXT is the context of this project, a list of filename.
+
+PROVIDER is the llm provider for this project.
+
 SESSION is the `aidee-session' for this project."
   root
   context
@@ -656,11 +719,33 @@ SESSION is the `aidee-session' for this project."
   session
   )
 
-(defvar-local aidee--local-context-automatically nil
-  "File context which is added automatically.
+(cl-defstruct aidee-file-deps
+  (filename)
+  (deps)
+  (timestamp))
+
+(defun aidee--file-deps-init-fn (data)
+  "DATA is a filename."
+  (aidee--file-modified-timestamp data))
+
+(defun aidee--file-deps-test-fn (info data)
+  "INFO is what `aidee--file-deps-init-fn' returns.
+DATA is a filename."
+  (> (aidee--file-modified-timestamp data) info))
+
+(defvar aidee--file-deps (cache-make-cache #'aidee--file-deps-init-fn
+                                           #'aidee--file-deps-test-fn
+                                           #'ignore
+                                           :test #'equal)
+  "Buffers' deps.
+Key is file name, value is of type `aidee-file-deps'.")
+
+
+(defvar-local aidee--file-context-automatically nil
+  "File context which is calculated automatically.
 This is a list of filename.")
 
-(defvar-local aidee--local-context-manually nil
+(defvar-local aidee--file-context-manually nil
   "File context which is added manually.
 This is a list of filename.")
 
@@ -693,8 +778,8 @@ its `aidee-project'.")
             (setq outgoings (append outgoings (lsp--call-hierarchy method item tag))))))
       (list incomings outgoings))))
 
-;; NOTE How `aidee--retrieve-file-deps-by-lspce' works:
-;; - Open FILENAME and enable `lspce-mode' in its buffer.
+;; NOTE How `aidee--retrieve-file-deps-by-lspce-1' works:
+;; - Open FILENAME.
 
 ;; - Use textDocument/documentSymbol to query desired symbols.
 ;;   Filter symbols with kind and get symbol's start position from selectionRange.
@@ -704,23 +789,18 @@ its `aidee-project'.")
 ;; - Retrieve outgoning calls and get files that FILENAME directly depends on.
 
 ;; - Merge and dedup filenames
-(defun aidee--retrieve-file-deps-by-lspce (filename)
-  (when (and (ignore-errors
-               (require 'lspce))
+(defun aidee--retrieve-file-deps-by-lspce-1 (filename)
+  (when (and (fboundp 'lspce-mode)
              (file-exists-p filename))
     (aidee-with-file-open-temporarily
         filename t
-        (let (filenames
-              symbols
-              incomings
-              outgoings
-              calls
-              deps)
-          (ignore-errors
-            (unless lspce-mode
-              (lspce-mode +1)))
-
-          (when lspce-mode
+        (when lspce-mode
+          (let (filenames
+                symbols
+                incomings
+                outgoings
+                calls
+                deps)
             (when-let* ((response (lspce--request
                                    "textDocument/documentSymbol"
                                    (list :textDocument
@@ -728,6 +808,7 @@ its `aidee-project'.")
               (cl-dolist (symbol response)
                 (let ((kind (gethash "kind" symbol))
                       (children (gethash "children" symbol)))
+                  ;; FIXME add a defcustom
                   ;; 5 class
                   ;; 6 method
                   ;; 12 function
@@ -752,8 +833,19 @@ its `aidee-project'.")
                           (path (aidee--uri-to-path uri)))
                 (when (and (string-prefix-p lspce--root-uri uri)
                            (not (string-equal filename path)))
-                  (push path deps)))))
-          (delete-dups deps)))))
+                  (push path deps))))
+            (delete-dups deps))))))
+
+(defun aidee--retrieve-file-deps (filename)
+  "Get files depending on or depended by FILENAME."
+  (let ((deps (cache-get filename aidee--file-deps filename)))
+    (unless deps
+      (setq deps (and aidee-file-deps-function
+                      (functionp aidee-file-deps-function)
+                      (funcall aidee-file-deps-function filename)))
+      (when deps
+        (cache-put filename deps aidee--file-deps filename)))
+    deps))
 
 ;;;###autoload
 (defun aidee-add-local-context ()
@@ -765,7 +857,7 @@ its `aidee-project'.")
     (when (and filename
                root-uri
                (file-exists-p filename))
-      (setq aidee--local-context-manually (delete-dups (push filename aidee--local-context-manually))))))
+      (setq aidee--file-context-manually (delete-dups (push filename aidee--file-context-manually))))))
 
 ;;;###autoload
 (defun aidee-remove-local-context ()
@@ -773,10 +865,10 @@ its `aidee-project'.")
   (interactive)
   (let (filename)
     (setq filename (completing-read "Remove a file from local context: "
-                                    aidee--local-context-manually))
+                                    aidee--file-context-manually))
     (when (and filename
                (file-exists-p filename))
-      (setq aidee--local-context-manually (delete filename aidee--local-context-manually)))))
+      (setq aidee--file-context-manually (delete filename aidee--file-context-manually)))))
 
 (defun aidee--project (root-uri)
   (when root-uri
@@ -849,9 +941,9 @@ its `aidee-project'.")
         (setq deps (list filename))
         (cond
          (automatic-p
-          (setq deps (append deps aidee--local-context-automatically)))
+          (setq deps (append deps (aidee--retrieve-file-deps filename))))
          (manual-p
-          (setq deps (append deps aidee--local-context-manually)))
+          (setq deps (append deps aidee--file-context-manually)))
          ((and project-p
                project)
           (setq deps (append deps (aidee-project-context project)))))
@@ -864,7 +956,7 @@ its `aidee-project'.")
                                   (aidee-file-skeleton-filename file-skeleton)
                                   ":\n"
                                   (aidee-file-skeleton-skeleton file-skeleton)
-                                  "\n")))))
+                                  "\n\n")))))
       context)))
 
 (defun aidee--project-context ()
