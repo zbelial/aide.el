@@ -37,7 +37,6 @@
 (require 'cl-lib)
 
 ;; Copied from ellama and modified
-(require 'eieio)
 (require 'llm)
 (require 'llm-provider-utils)
 (require 'spinner)
@@ -216,10 +215,8 @@ FILE is a path to file contains string representation of this session, string.
 
 PROMPT is a variable contains last prompt in this session.
 
-RESPONSE is a variable contains last response in this session.
-
-CONTEXT contains context for next request."
-  id provider file buffer prompt response context)
+RESPONSE is a variable contains last response in this session. "
+  id provider file buffer prompt response)
 
 (defun aidee-get-session-buffer (id)
   "Return aidee session buffer by provided ID."
@@ -283,8 +280,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
 		   (get-buffer-create id)))
 	 (session (make-aidee-session
 		   :id id :provider provider :file file-name
-                   :buffer buffer
-		   :context nil)))
+                   :buffer buffer)))
     (setq aidee--current-session-id id)
     (puthash id buffer aidee--active-sessions)
     (with-current-buffer buffer
@@ -384,6 +380,9 @@ failure (with BUFFER current).
          (invoke-buffer (current-buffer)))
     (with-current-buffer invoke-buffer
       (spinner-start aidee-spinner-type))
+    (when session
+      (setf (aidee-session-prompt session) prompt)
+      (setf (aidee-session-response session) nil))
     (with-current-buffer buffer
       (aidee-request-mode +1)
       (let* ((start (make-marker))

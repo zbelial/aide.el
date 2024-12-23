@@ -46,8 +46,9 @@
   :type 'string)
 
 ;;;; Coding helpers
-;; 3 placeholders: Context, user instrument and suffix.
-(defcustom aidee-project-code-prompt-template "Context: \n```\n%s\n```\nBased on this context, act as an expert software developer, %s. %s"
+
+;; 4 placeholders: context, context format, user instrument and suffix.
+(defcustom aidee-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s. %s"
   "Prompt template for all project code task."
   :group 'aidee
   :type 'string)
@@ -67,7 +68,26 @@
   :group 'aidee
   :type 'string)
 
-;; 1 placeholder(s): Language.
+(defcustom aidee-project-code-context-format "Context at the begining contains one or more *CONTEXT block*,
+each block represents a file and its content.
+
+# *CONTEXT block* Format:
+
+Every *CONTEXT block* follows this format:
+1. The opening fence: ```
+2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
+3. The closing fence: ```
+4. The opening fence and code language, eg: ```python, here python will be replaced with the code language following.
+5. A contiguous chunk of codes in the existing file represented by the *FULL* file path. This part may be the exact content of the file, or just class name, method signatures or class properties, etc.
+6. The closing fence: ```
+
+"
+  "Context format."
+  :group 'aidee
+  :type 'string
+  )
+
+;; 1 placeholder(s): language
 (defcustom aidee-project-code-edit-suffix-template "Always use best practices when coding.
 Respect and use existing conventions, libraries, etc that are already present in the code base.
 
@@ -369,6 +389,7 @@ When START is non-nil the search will start at that index."
        (format
         aidee-project-code-prompt-template
         context
+        aidee-project-code-context-format
         task
         (format aidee-project-code-edit-suffix-template aidee-coding-language))
        :provider aidee-coding-provider
@@ -389,6 +410,7 @@ When START is non-nil the search will start at that index."
     (aidee-instant (format
                     aidee-project-code-prompt-template
                     context
+                    aidee-project-code-context-format
                     (format aidee-project-code-explain-instruction-template text)
                     "")
                    :provider aidee-coding-provider)))
@@ -404,6 +426,7 @@ When START is non-nil the search will start at that index."
     (aidee-instant (format
                     aidee-project-code-prompt-template
                     context
+                    aidee-project-code-context-format
                     (format aidee-project-code-review-instruction-template text)
                     "")
                    :provider aidee-coding-provider)))
@@ -438,6 +461,7 @@ When START is non-nil the search will start at that index."
        (format
         aidee-project-code-prompt-template
         context
+        aidee-project-code-context-format
         (format aidee-project-code-improve-prompt-template text)
         (format aidee-project-code-edit-suffix-template aidee-coding-language))
        :provider aidee-coding-provider
@@ -927,6 +951,33 @@ its `aidee-project'.")
                  (file-exists-p filename))
         (setf (aidee-project-context project) (delete filename context))))))
 
+;; TODO add more associations
+(defvar aidee--language-ids
+  '(("py" . "python")
+    ("el" . "elisp")))
+
+(defun aidee--file-language-id (filename)
+  "Get language id of FILENAME."
+  (let (suffix
+        language-id)
+    (setq suffix (file-name-extension filename))
+    (setq language-id (assoc-default suffix aidee--language-ids))
+    (unless language-id
+      (setq language-id suffix))
+    language-id))
+
+(defun aidee--format-file-context (filename content)
+  "Format FILENAME and its CONTENT as context in the specified format."
+  (let (context
+        (language-id (aidee--file-language-id filename)))
+    (concat "```\n"
+            filename "\n"
+            "```\n"
+            "```" language-id "\n"
+            content "\n"
+            "```"
+            "\n\n")))
+
 (defun aidee--file-context (&optional automatic-p manual-p project-p)
   "Calculate context of current buffer file."
   (with-current-buffer (current-buffer)
@@ -948,15 +999,16 @@ its `aidee-project'.")
                project)
           (setq deps (append deps (aidee-project-context project)))))
         (setq deps (delete filename (delete-dups deps)))
-        (setq context (concat filename ":\n" (buffer-substring-no-properties (point-min) (point-max)) "\n\n"))
+        (setq context (aidee--format-file-context
+                       filename
+                       (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
           (setq file-skeleton (aidee--file-skeleton dep))
           (when file-skeleton
             (setq context (concat context
-                                  (aidee-file-skeleton-filename file-skeleton)
-                                  ":\n"
-                                  (aidee-file-skeleton-skeleton file-skeleton)
-                                  "\n\n")))))
+                                  (aidee--format-file-context
+                                   (aidee-file-skeleton-filename file-skeleton)
+                                   (aidee-file-skeleton-skeleton file-skeleton)))))))
       context)))
 
 (defun aidee--project-context ()
@@ -971,16 +1023,40 @@ its `aidee-project'.")
       (when (and filename
                  project)
         (setq deps (delete-dups (aidee-project-context project)))
-        (setq context (concat filename ":\n" (buffer-substring-no-properties (point-min) (point-max)) "\n\n"))
+        (setq context (aidee--format-file-context
+                       filename
+                       (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
           (setq file-skeleton (aidee--file-skeleton dep))
           (when file-skeleton
             (setq context (concat context
-                                  (aidee-file-skeleton-filename file-skeleton)
-                                  ":\n"
-                                  (aidee-file-skeleton-skeleton file-skeleton)
-                                  "\n\n")))))
+                                  (aidee--format-file-context
+                                   (aidee-file-skeleton-filename file-skeleton)
+                                   (aidee-file-skeleton-skeleton file-skeleton)))))))
       context)))
+
+;;;; Helping functions
+(defun aidee-latest-response ()
+  (interactive)
+  (with-current-buffer (current-buffer)
+    (let* ((root-uri (aidee--root-uri))
+           response)
+      (when root-uri
+        (when-let* ((project (aidee--project root-uri))
+                    (session (aidee-project-session project)))
+          (setq response (aidee-session-response session))))
+      (message "response: %s" response))))
+
+(defun aidee-latest-prompt ()
+  (interactive)
+  (with-current-buffer (current-buffer)
+    (let* ((root-uri (aidee--root-uri))
+           prompt)
+      (when root-uri
+        (when-let* ((project (aidee--project root-uri))
+                    (session (aidee-project-session project)))
+          (setq prompt (aidee-session-prompt session))))
+      (message "prompt: %s" prompt))))
 
 (provide 'aidee-coding)
 
