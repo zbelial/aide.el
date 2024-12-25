@@ -239,7 +239,11 @@ RESPONSE is a variable contains last response in this session. "
 
 (defun aidee-generate-name (provider label)
   "Generate name for aidee ACTION by PROVIDER according to PROMPT."
-  (replace-regexp-in-string "/" "_" (funcall aidee-naming-scheme provider action prompt)))
+  (replace-regexp-in-string "/" "_" (funcall aidee-naming-scheme provider label)))
+
+(defun aidee-generate-temp-name (provider)
+  "Generate name for aidee ACTION by PROVIDER according to PROMPT."
+  (replace-regexp-in-string "/" "_" (aidee-generate-name-by-time provider "temp")))
 
 (defun aidee-get-session-file-extension ()
   "Return file extension based om the current mode.
@@ -336,8 +340,6 @@ strings before they're inserted into the BUFFER.
 
 :session SESSION -- SESSION is a aidee conversation session.
 
-:session-id ID -- ID is a aidee session unique identifier.
-
 :ephemeral-session BOOL -- if BOOL is set session will not be saved to named
 file by default.
 
@@ -346,19 +348,15 @@ failure (with BUFFER current).
 
 :on-done ON-DONE -- ON-DONE a function or list of functions that's called with
  the full response text when the request completes (with BUFFER current)."
-  (let* ((session-id (plist-get args :session-id))
-	 (session (or (plist-get args :session)
-		      (when session-id
-			(with-current-buffer (aidee-get-session-buffer session-id)
-			  aidee--current-session))))
+  (let* ((session (plist-get args :session))
          (provider (or (plist-get args :provider)
                        (if session
                            (aidee-session-provider session)
                          aidee-provider)))
 	 (buffer (or (plist-get args :buffer)
-		     (when (aidee-session-p session)
-		       (aidee-get-session-buffer (aidee-session-id session)))
-		     (current-buffer)))
+		     (when session
+		       (aidee-session-buffer session))
+		     (get-buffer-create (aidee-generate-temp-name provider))))
 	 (point (or (plist-get args :point)
 		    (with-current-buffer buffer (point))))
 	 (filter (or (plist-get args :filter) #'identity))
@@ -435,15 +433,14 @@ failure (with BUFFER current).
 ARGS contains keys for fine control.
 
 :provider PROVIDER -- PROVIDER is an llm provider for generation."
-  (let* ((provider (or (plist-get args :provider)
+  (let* ((session (plist-get args :session))
+         (provider (or (plist-get args :provider)
 		       aidee-provider))
-	 (buffer-name (aidee-generate-name provider real-this-command prompt))
-	 (buffer (get-buffer-create (if (get-buffer buffer-name)
-					(make-temp-name (concat buffer-name " "))
-				      buffer-name))))
+	 (buffer (get-buffer-create (aidee-generate-temp-name provider))))
     (display-buffer buffer (when aidee-instant-display-action-function
 			     `((ignore . (,aidee-instant-display-action-function)))))
     (aidee-stream prompt
+                  :session session
 		  :buffer buffer
 		  :provider provider)))
 

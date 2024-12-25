@@ -35,17 +35,10 @@
 (require 'aidee-utils)
 (require 'cache)
 
-(defcustom aidee-coding-provider nil
-  "LLM provider for coding tasks."
-  :group 'aidee
-  :type '(sexp :validate 'llm-standard-provider-p))
-
 (defcustom aidee-coding-language "English"
   "Language for aidee coding."
   :group 'aidee
   :type 'string)
-
-;;;; Coding helpers
 
 ;; 4 placeholders: context, context format, user instrument and suffix.
 (defcustom aidee-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s. %s"
@@ -373,15 +366,13 @@ When START is non-nil the search will start at that index."
          (project (aidee--project root-uri))
          (context (aidee--file-context t t t))
          session
-         session-id
          session-file
          buffer
          text)
     (when project
       (setq session (aidee-project-session project))
-      (setq buffer (aidee-session-buffer session)
-            session-id (aidee-session-id session))
-      ;; if buffer has been distroyed, recreate it
+      (setq buffer (aidee-session-buffer session))
+      ;; if buffer has been destroyed, recreate it
       (unless (buffer-live-p buffer)
         (setq session-file (aidee-session-file session))
         (setq buffer (find-file-noselect session-file))
@@ -393,8 +384,7 @@ When START is non-nil the search will start at that index."
         aidee-project-code-context-format
         task
         (format aidee-project-code-edit-suffix-template aidee-coding-language))
-       :provider aidee-coding-provider
-       :session-id session-id
+       :provider aidee-provider
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
@@ -414,7 +404,7 @@ When START is non-nil the search will start at that index."
                     aidee-project-code-context-format
                     (format aidee-project-code-explain-instruction-template text)
                     "")
-                   :provider aidee-coding-provider)))
+                   :provider aidee-provider)))
 
 ;;;###autoload
 (defun aidee-project-code-review ()
@@ -430,7 +420,7 @@ When START is non-nil the search will start at that index."
                     aidee-project-code-context-format
                     (format aidee-project-code-review-instruction-template text)
                     "")
-                   :provider aidee-coding-provider)))
+                   :provider aidee-provider)))
 
 ;;;###autoload
 (defun aidee-project-code-improve ()
@@ -440,7 +430,6 @@ When START is non-nil the search will start at that index."
          (project (aidee--project root-uri))
          (context (aidee--file-context t t t))
          session
-         session-id
          session-file
          buffer
          (beg (if (region-active-p)
@@ -452,8 +441,7 @@ When START is non-nil the search will start at that index."
 	 (text (buffer-substring-no-properties beg end)))
     (when project
       (setq session (aidee-project-session project))
-      (setq buffer (aidee-session-buffer session)
-            session-id (aidee-session-id session))
+      (setq buffer (aidee-session-buffer session))
       (unless (buffer-live-p buffer)
         (setq session-file (aidee-session-file session))
         (setq buffer (find-file-noselect session-file))
@@ -465,8 +453,7 @@ When START is non-nil the search will start at that index."
         aidee-project-code-context-format
         (format aidee-project-code-improve-prompt-template text)
         (format aidee-project-code-edit-suffix-template aidee-coding-language))
-       :provider aidee-coding-provider
-       :session-id session-id
+       :provider aidee-provider
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
@@ -900,8 +887,8 @@ its `aidee-project'.")
     (let ((project (gethash root-uri aidee--projects))
           session)
       (unless project
-        (setq session (aidee-new-session aidee-coding-provider root-uri))
-        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-coding-provider :session session))
+        (setq session (aidee-new-session aidee-provider root-uri))
+        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-provider :session session))
         (puthash root-uri project aidee--projects))
       project)))
 
@@ -913,7 +900,7 @@ its `aidee-project'.")
     (when root-uri
       (setq project (gethash root-uri aidee--projects))
       (when project
-        (setq session (aidee-new-session aidee-coding-provider root-uri))
+        (setq session (aidee-new-session aidee-provider root-uri))
         (setf (aidee-project-session project) session)))))
 
 ;;;###autoload
