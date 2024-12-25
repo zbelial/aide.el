@@ -381,6 +381,7 @@ When START is non-nil the search will start at that index."
       (setq session (aidee-project-session project))
       (setq buffer (aidee-session-buffer session)
             session-id (aidee-session-id session))
+      ;; if buffer has been distroyed, recreate it
       (unless (buffer-live-p buffer)
         (setq session-file (aidee-session-file session))
         (setq buffer (find-file-noselect session-file))

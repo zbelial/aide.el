@@ -57,11 +57,6 @@
   :group 'aidee
   :type 'string)
 
-(defcustom aidee-nick-prefix-depth 2
-  "Prefix depth."
-  :group 'aidee
-  :type 'integer)
-
 (defcustom aidee-provider nil
   "Backend LLM provider."
   :group 'aidee
@@ -116,11 +111,6 @@
           (function :tag "By predicate")
           (repeat :tag "In specific modes" (symbol))))
 
-(defcustom aidee-name-prompt-words-count 5
-  "Count of words in prompt to generate name."
-  :group 'aidee
-  :type 'integer)
-
 (defcustom aidee-naming-scheme 'aidee-generate-name-by-words
   "How to name sessions.
 If you choose custom function, that function should accept PROVIDER, ACTION
@@ -128,9 +118,7 @@ and PROMPT arguments.
 
 PROVIDER is an llm provider.
 
-ACTION is a symbol, current command.
-
-PROMPT is a prompt string."
+LABEL is a prefix string."
   :group 'aidee
   :type `(choice
           (const :tag "By first N words of prompt" aidee-generate-name-by-words)
@@ -222,31 +210,34 @@ RESPONSE is a variable contains last response in this session. "
   "Return aidee session buffer by provided ID."
   (gethash id aidee--active-sessions))
 
-(defun aidee-generate-name-by-words (provider action prompt)
+(defun aidee-generate-name-by-words (provider label)
   "Generate name for ACTION by PROVIDER by getting first N words from PROMPT."
-  (let* ((cleaned-prompt (replace-regexp-in-string "/" "_" prompt))
-         (prompt-words (split-string cleaned-prompt)))
-    (string-join
-     (flatten-tree
-      (list (split-string (format "%s" action) "-")
-	    (seq-take prompt-words aidee-name-prompt-words-count)
-	    (if (> (length prompt-words) aidee-name-prompt-words-count)
-		"..."
-	      nil)
-	    (format "(%s)" (llm-name provider))))
-     " ")))
+  (let* ((cleaned-label (replace-regexp-in-string "/" "_" label))
+         (prompt-words (split-string cleaned-label)))
+    (concat
+     (string-join
+      (flatten-tree
+       (list cleaned-label))
+      "-")
+     (format "(%s)" (llm-name provider)))))
 
 (defun aidee-get-current-time ()
   "Return string representation of current time."
   (replace-regexp-in-string
    "\\([0-9]\\{2\\}\\)\\([0-9]\\{2\\}\\)\\'" "\\1:\\2"
-   (format-time-string "%FT%T%z" (current-time))))
+   (format-time-string "%FT%TT%3N" (current-time))))
 
-(defun aidee-generate-name-by-time (_provider _action _prompt)
+(defun aidee-generate-name-by-time (provider label)
   "Generate name for aidee session by current time."
-  (aidee-get-current-time))
+  (let* ((cleaned-label (replace-regexp-in-string "/" "_" label)))
+    (concat
+     (string-join
+      (list cleaned-label
+            (aidee-get-current-time))
+      "-")
+     (format "(%s)" (llm-name provider)))))
 
-(defun aidee-generate-name (provider action prompt)
+(defun aidee-generate-name (provider label)
   "Generate name for aidee ACTION by PROVIDER according to PROMPT."
   (replace-regexp-in-string "/" "_" (funcall aidee-naming-scheme provider action prompt)))
 
@@ -259,7 +250,7 @@ Defaults to md, but supports org.  Depends on \"aidee-major-mode.\""
   "Create new aidee session with unique id.
 Provided PROVIDER and NAME will be used in new session.
 If EPHEMERAL non nil new session will not be associated with any file."
-  (let* ((name (aidee-generate-name provider 'aidee label))
+  (let* ((name (aidee-generate-name provider label))
 	 (count 1)
 	 (name-with-suffix (format "%s %d" name count))
 	 (id (if (not (aidee-get-session-buffer name))
@@ -268,8 +259,7 @@ If EPHEMERAL non nil new session will not be associated with any file."
 		 (setq count (+ count 1))
 		 (setq name-with-suffix (format "%s %d" name count)))
 	       name-with-suffix))
-	 (file-name (when (and (not ephemeral)
-			       aidee-session-auto-save)
+	 (file-name (when (not ephemeral)
 		      (file-name-concat
 		       aidee-sessions-directory
 		       (concat id "." (aidee-get-session-file-extension)))))
