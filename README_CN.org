@@ -1,0 +1,6 @@
+#+STARTUP: overview 
+#+STARTUP: hidestars
+#+TITLE: README_CN
+#+Date: 24-10-15
+
+Eureka，基于AI的Emacs编程助手。

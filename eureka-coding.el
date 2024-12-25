@@ -1,4 +1,4 @@
-;;; aidee-coding.el  --- AI powered Development Environtment for Emacs. -*- lexical-binding: t; -*-
+;;; eureka-coding.el  --- AI powered Development Environment for Emacs. -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024 zbelial zjyzhaojiyang@gmail.com
 
@@ -6,7 +6,7 @@
 
 ;; Maintainer: zbelial zjyzhaojiyang@gmail.com
 
-;; Homepage: https://github.com/zbelial/aidee.el.git
+;; Homepage: https://github.com/zbelial/eureka.el.git
 ;; Version: 0.1.0
 ;; Keywords: AI LLM Emacs Coding
 
@@ -31,37 +31,37 @@
 
 ;;; Code:
 (require 'cl-lib)
-(require 'aidee-core)
-(require 'aidee-utils)
+(require 'eureka-core)
+(require 'eureka-utils)
 (require 'cache)
 
-(defcustom aidee-coding-language "English"
-  "Language for aidee coding."
-  :group 'aidee
+(defcustom eureka-coding-language "English"
+  "Language for eureka coding."
+  :group 'eureka
   :type 'string)
 
 ;; 4 placeholders: context, context format, user instrument and suffix.
-(defcustom aidee-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s. %s"
+(defcustom eureka-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s. %s"
   "Prompt template for all project code task."
-  :group 'aidee
+  :group 'eureka
   :type 'string)
 
-(defcustom aidee-project-code-review-instruction-template "review the following code and make concise suggestions: \n```%s\n```"
-  "Prompt template for `aidee-project-code-review'."
-  :group 'aidee
+(defcustom eureka-project-code-review-instruction-template "review the following code and make concise suggestions: \n```%s\n```"
+  "Prompt template for `eureka-project-code-review'."
+  :group 'eureka
   :type 'string)
 
-(defcustom aidee-project-code-improve-instruction-template "enhance the following code: \n```%s\n```"
-  "Prompt template for `aidee-project-code-improve'."
-  :group 'aidee
+(defcustom eureka-project-code-improve-instruction-template "enhance the following code: \n```%s\n```"
+  "Prompt template for `eureka-project-code-improve'."
+  :group 'eureka
   :type 'string)
 
-(defcustom aidee-project-code-explain-instruction-template "explain the following code in a detailed way: \n```%s\n```"
-  "Prompt template for `aidee-project-code-explain'."
-  :group 'aidee
+(defcustom eureka-project-code-explain-instruction-template "explain the following code in a detailed way: \n```%s\n```"
+  "Prompt template for `eureka-project-code-explain'."
+  :group 'eureka
   :type 'string)
 
-(defcustom aidee-project-code-context-format "Context at the begining contains one or more *CONTEXT block*,
+(defcustom eureka-project-code-context-format "Context at the begining contains one or more *CONTEXT block*,
 each block represents a file and its content.
 
 # *CONTEXT block* Format:
@@ -76,12 +76,12 @@ Every *CONTEXT block* follows this format:
 
 "
   "Context format."
-  :group 'aidee
+  :group 'eureka
   :type 'string
   )
 
 ;; 1 placeholder(s): language
-(defcustom aidee-project-code-edit-suffix-template "Always use best practices when coding.
+(defcustom eureka-project-code-edit-suffix-template "Always use best practices when coding.
 Respect and use existing conventions, libraries, etc that are already present in the code base.
 
 You NEVER leave comments describing code without implementing it!
@@ -144,14 +144,14 @@ You always COMPLETELY IMPLEMENT the needed code!
 ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 
 "
-  "Prompt template for `aidee-project-code-edit'."
-  :group 'aidee
+  "Prompt template for `eureka-project-code-edit'."
+  :group 'eureka
   :type 'string)
 
-(defvar aidee--code-search-label "<<<<<<< SEARCH")
-(defvar aidee--code-replace-label ">>>>>>> REPLACE")
+(defvar eureka--code-search-label "<<<<<<< SEARCH")
+(defvar eureka--code-replace-label ">>>>>>> REPLACE")
 
-(defconst aidee--project-code-search-replace-pattern
+(defconst eureka--project-code-search-replace-pattern
   (rx
    (seq
     ;;code fence start
@@ -159,7 +159,7 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
      (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
     ;;SEARCH
     (minimal-match
-     (eval aidee--code-search-label) (+ (or "\n" "\r")))
+     (eval eureka--code-search-label) (+ (or "\n" "\r")))
     (group (minimal-match
             (zero-or-more anything)))
     ;; =======
@@ -168,12 +168,12 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
     (group (minimal-match
             (zero-or-more anything)))
     (minimal-match
-     (eval aidee--code-replace-label) (+ (or "\n" "\r")))
+     (eval eureka--code-replace-label) (+ (or "\n" "\r")))
     ;;code fence end
     (literal "```")))
   )
 
-(defconst aidee--project-code-edit-pattern
+(defconst eureka--project-code-edit-pattern
   (rx
    ;;filename fence start
    (minimal-match
@@ -191,7 +191,7 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
       (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
      ;;SEARCH
      (minimal-match
-      (eval aidee--code-search-label) (+ (or "\n" "\r")))
+      (eval eureka--code-search-label) (+ (or "\n" "\r")))
      (group (minimal-match
              (zero-or-more anything)))
      ;; =======
@@ -200,12 +200,12 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
      (group (minimal-match
              (zero-or-more anything)))
      (minimal-match
-      (eval aidee--code-replace-label) (+ (or "\n" "\r")))
+      (eval eureka--code-replace-label) (+ (or "\n" "\r")))
      ;;code fence end
      (literal "```")))))
 
 ;; copied from s.el's s-match and modified
-(defun aidee--match (regexp s &optional start)
+(defun eureka--match (regexp s &optional start)
   "When the given expression matches the string, this function returns a list
 of the whole matching string and a string for each matched subexpressions.
 Subexpressions that didn't match are represented by nil elements
@@ -231,15 +231,15 @@ When START is non-nil the search will start at that index."
                     (cddr match-data-list))))
           (nreverse result)))))
 
-(cl-defstruct aidee--file-edit
+(cl-defstruct eureka--file-edit
   search
   replace)
 
-(cl-defstruct aidee--file-action
+(cl-defstruct eureka--file-action
   filename
   edits)
 
-(defun aidee--count-substring (substring string)
+(defun eureka--count-substring (substring string)
   "Count the number of occurrences of SUBSTRING in STRING."
   (let ((count 0)
         (start 0))
@@ -248,7 +248,7 @@ When START is non-nil the search will start at that index."
       (setq start (match-end 0)))
     count))
 
-(defun aidee--project-code-edit-parse-search-replace (text)
+(defun eureka--project-code-edit-parse-search-replace (text)
   (let ((edits nil)
         search replace
         edit
@@ -256,19 +256,19 @@ When START is non-nil the search will start at that index."
         stop?
         match-result)
     (while (not stop?)
-      (setq match-result (aidee--match aidee--project-code-search-replace-pattern text start))
+      (setq match-result (eureka--match eureka--project-code-search-replace-pattern text start))
       (if (and match-result
                (length= match-result 3))
           (progn
             (setq start (nth 2 (nth 0 match-result))
                   search (nth 0 (nth 1 match-result))
                   replace (nth 0 (nth 2 match-result)))
-            (setq edit (make-aidee--file-edit :search search :replace replace))
+            (setq edit (make-eureka--file-edit :search search :replace replace))
             (push edit edits))
         (setq stop? t)))
     (nreverse edits)))
 
-(defun aidee--project-code-edit-parse-response (text)
+(defun eureka--project-code-edit-parse-response (text)
   (let ((actions nil)
         filename
         action
@@ -279,12 +279,12 @@ When START is non-nil the search will start at that index."
         total-end
         start
         stop?)
-    (if (= (aidee--count-substring aidee--code-search-label text)
-           (aidee--count-substring aidee--code-replace-label text))
+    (if (= (eureka--count-substring eureka--code-search-label text)
+           (eureka--count-substring eureka--code-replace-label text))
         (progn
           (while (not stop?)
             (progn
-              (setq match-result (aidee--match aidee--project-code-edit-pattern text start))
+              (setq match-result (eureka--match eureka--project-code-edit-pattern text start))
               (if (and match-result
                        (length> match-result 2))
                   (progn
@@ -292,11 +292,11 @@ When START is non-nil the search will start at that index."
                           filename-end (nth 2 (nth 1 match-result))
                           filename (nth 0 (nth 1 match-result)))
                     (setq edit-text (substring-no-properties text filename-end total-end))
-                    (setq edits (aidee--project-code-edit-parse-search-replace edit-text))
+                    (setq edits (eureka--project-code-edit-parse-search-replace edit-text))
                     (setq action nil)
                     (when (and filename
                                edits)
-                      (setq action (make-aidee--file-action :filename filename
+                      (setq action (make-eureka--file-action :filename filename
                                                             :edits edits))
                       (push action actions))
                     (setq start total-end))
@@ -304,47 +304,30 @@ When START is non-nil the search will start at that index."
           (nreverse actions))
       (message "Ill-formed response."))))
 
-(defun aidee--project-code-edit-done-callback (text &optional on-done)
-  (let ((actions (aidee--project-code-edit-parse-response text)))
+(defun eureka--project-code-edit-done-callback (text &optional on-done)
+  (when ellama-session-auto-save
+    (save-buffer))
+  (let ((actions (eureka--project-code-edit-parse-response text)))
     (when actions
+      (require 'ediff)
       (cl-dolist (action actions)
-        (let ((filename (aidee--file-action-filename action))
-              (edits (aidee--file-action-edits action))
-              search
-              replace)
-          (aidee-with-file-open-temporarily
-              filename t
-              (cl-dolist (edit edits)
-                (setq search (aidee--file-edit-search edit)
-                      replace (aidee--file-edit-replace edit))
-                (if (length= search 0)
-                    (progn
-                      (goto-char (point-max))
-                      (insert replace))
-                  (query-replace search replace nil (point-min) (point-max))))
-              ))))))
-
-(defun aidee--project-code-edit-done-callback (text &optional on-done)
-  (let ((actions (aidee--project-code-edit-parse-response text)))
-    (when actions
-      (cl-dolist (action actions)
-        (let ((filename (aidee--file-action-filename action))
-              (edits (aidee--file-action-edits action))
+        (let ((filename (eureka--file-action-filename action))
+              (edits (eureka--file-action-edits action))
               content
               oldbuf
               tmpbuf
               tmpcont
               search
               replace)
-          (aidee-with-file-open-temporarily
+          (eureka-with-file-open-temporarily
               filename t
               (setq oldbuf (current-buffer)
                     content (buffer-substring-no-properties (point-min) (point-max)))
               (setq tmpcont content)
               (setq tmpbuf (generate-new-buffer " *temp* " t))
               (cl-dolist (edit edits)
-                (setq search (aidee--file-edit-search edit)
-                      replace (aidee--file-edit-replace edit))
+                (setq search (eureka--file-edit-search edit)
+                      replace (eureka--file-edit-replace edit))
                 (cond
                  ((and (length= search 0)
                        (length= tmpcont 0))
@@ -359,76 +342,77 @@ When START is non-nil the search will start at that index."
               (ediff-buffers oldbuf tmpbuf)))))))
 
 ;;;###autoload
-(defun aidee-project-code-edit (task)
+(defun eureka-project-code-edit (task)
   "Do some coding edit in the project."
   (interactive "sWhat needs to be done: ")
-  (let* ((root-uri (aidee--root-uri))
-         (project (aidee--project root-uri))
-         (context (aidee--file-context t t t))
+  (let* ((root-uri (eureka--root-uri))
+         (project (eureka--project root-uri))
+         (context (eureka--file-context t t t))
          session
          session-file
          buffer
          text)
     (when project
-      (setq session (aidee-project-session project))
-      (setq buffer (aidee-session-buffer session))
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
       ;; if buffer has been destroyed, recreate it
       (unless (buffer-live-p buffer)
-        (setq session-file (aidee-session-file session))
+        (setq session-file (eureka-session-file session))
         (setq buffer (find-file-noselect session-file))
-        (setf (aidee-session-buffer session) buffer))
-      (aidee-stream
+        (setf (eureka-session-buffer session) buffer))
+      (display buffer)
+      (eureka-stream
        (format
-        aidee-project-code-prompt-template
+        eureka-project-code-prompt-template
         context
-        aidee-project-code-context-format
+        eureka-project-code-context-format
         task
-        (format aidee-project-code-edit-suffix-template aidee-coding-language))
-       :provider aidee-provider
+        (format eureka-project-code-edit-suffix-template eureka-coding-language))
+       :provider eureka-provider
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
-       :on-done #'aidee--project-code-edit-done-callback))))
+       :on-done #'eureka--project-code-edit-done-callback))))
 
 ;;;###autoload
-(defun aidee-project-code-explain ()
+(defun eureka-project-code-explain ()
   "Explain code in selected region or current buffer."
   (interactive)
   (let ((text (if (region-active-p)
 		  (buffer-substring-no-properties (region-beginning) (region-end))
 		(buffer-substring-no-properties (point-min) (point-max))))
-        (context (aidee--file-context nil nil nil)))
-    (aidee-instant (format
-                    aidee-project-code-prompt-template
+        (context (eureka--file-context nil nil nil)))
+    (eureka-instant (format
+                    eureka-project-code-prompt-template
                     context
-                    aidee-project-code-context-format
-                    (format aidee-project-code-explain-instruction-template text)
+                    eureka-project-code-context-format
+                    (format eureka-project-code-explain-instruction-template text)
                     "")
-                   :provider aidee-provider)))
+                   :provider eureka-provider)))
 
 ;;;###autoload
-(defun aidee-project-code-review ()
+(defun eureka-project-code-review ()
   "Review code in selected region or current buffer."
   (interactive)
   (let ((text (if (region-active-p)
 		  (buffer-substring-no-properties (region-beginning) (region-end))
 		(buffer-substring-no-properties (point-min) (point-max))))
-        (context (aidee--file-context nil nil nil)))
-    (aidee-instant (format
-                    aidee-project-code-prompt-template
+        (context (eureka--file-context nil nil nil)))
+    (eureka-instant (format
+                    eureka-project-code-prompt-template
                     context
-                    aidee-project-code-context-format
-                    (format aidee-project-code-review-instruction-template text)
+                    eureka-project-code-context-format
+                    (format eureka-project-code-review-instruction-template text)
                     "")
-                   :provider aidee-provider)))
+                   :provider eureka-provider)))
 
 ;;;###autoload
-(defun aidee-project-code-improve ()
+(defun eureka-project-code-improve ()
   "Improve selected code or the code in current buffer."
   (interactive)
-  (let* ((root-uri (aidee--root-uri))
-         (project (aidee--project root-uri))
-         (context (aidee--file-context t t t))
+  (let* ((root-uri (eureka--root-uri))
+         (project (eureka--project root-uri))
+         (context (eureka--file-context t t t))
          session
          session-file
          buffer
@@ -440,34 +424,35 @@ When START is non-nil the search will start at that index."
 		(point-max)))
 	 (text (buffer-substring-no-properties beg end)))
     (when project
-      (setq session (aidee-project-session project))
-      (setq buffer (aidee-session-buffer session))
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
       (unless (buffer-live-p buffer)
-        (setq session-file (aidee-session-file session))
+        (setq session-file (eureka-session-file session))
         (setq buffer (find-file-noselect session-file))
-        (setf (aidee-session-buffer session) buffer))
-      (aidee-stream
+        (setf (eureka-session-buffer session) buffer))
+      (display buffer)
+      (eureka-stream
        (format
-        aidee-project-code-prompt-template
+        eureka-project-code-prompt-template
         context
-        aidee-project-code-context-format
-        (format aidee-project-code-improve-prompt-template text)
-        (format aidee-project-code-edit-suffix-template aidee-coding-language))
-       :provider aidee-provider
+        eureka-project-code-context-format
+        (format eureka-project-code-improve-instruction-template text)
+        (format eureka-project-code-edit-suffix-template eureka-coding-language))
+       :provider eureka-provider
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
-       :on-done #'aidee--project-code-edit-done-callback))))
+       :on-done #'eureka--project-code-edit-done-callback))))
 
 ;;;; File skeleton
 
-(cl-defstruct aidee-file-skeleton
+(cl-defstruct eureka-file-skeleton
   (filename)
   (skeleton)
   (timestamp))
 
 ;; TODO explain queries
-(setq aidee--treesit-language-queries
+(setq eureka--treesit-language-queries
       '((python . (("class_definition" (class_definition ":" @context.body @context.surrounding.start body: (_)) @context)
                    ("function_definition" (function_definition ":" @context.body @context.surrounding.start body: (_)) @context)))
         (java . (("class_declaration" (class_declaration body: (class_body :anchor "{" @context.surrounding.start _ "}" @context.surrounding.end :anchor) @context.body) @context)
@@ -475,15 +460,15 @@ When START is non-nil the search will start at that index."
                  ("field_declaration" (field_declaration declarator: (_) ";") @context)))
         ))
 
-(defun aidee--treesit-language-node-types (language)
-  (let ((queries (assoc-default language aidee--treesit-language-queries))
+(defun eureka--treesit-language-node-types (language)
+  (let ((queries (assoc-default language eureka--treesit-language-queries))
         node-types)
     (when queries
       (setq node-types (mapcar 'car queries)))
     node-types))
 
-(defun aidee--treesit-language-node-query (language node-type)
-  (let ((queries (assoc-default language aidee--treesit-language-queries))
+(defun eureka--treesit-language-node-query (language node-type)
+  (let ((queries (assoc-default language eureka--treesit-language-queries))
         result)
     (when queries
       (cl-dolist (query queries)
@@ -491,53 +476,53 @@ When START is non-nil the search will start at that index."
           (setq result (append result (cdr query))))))
     result))
 
-(defvar-local aidee--file-skeleton nil
+(defvar-local eureka--file-skeleton nil
   "Skeleton of current buffer's file.")
 
-(defun aidee--file-modified-timestamp (filename)
+(defun eureka--file-modified-timestamp (filename)
   (let ((timestamp 0))
     (when (and filename
                (file-exists-p filename))
       (time-convert (file-attribute-modification-time (file-attributes filename)) 'integer))))
 
-(defun aidee--file-skeleton-init-fn (data)
+(defun eureka--file-skeleton-init-fn (data)
   "DATA is a filename."
-  (aidee--file-modified-timestamp data))
+  (eureka--file-modified-timestamp data))
 
-(defun aidee--file-skeleton-test-fn (info data)
-  "INFO is what `aidee--file-skeleton-init-fn' returns.
+(defun eureka--file-skeleton-test-fn (info data)
+  "INFO is what `eureka--file-skeleton-init-fn' returns.
 DATA is a filename."
-  (> (aidee--file-modified-timestamp data) info))
+  (> (eureka--file-modified-timestamp data) info))
 
-(defvar aidee--file-skeletons (cache-make-cache #'aidee--file-skeleton-init-fn
-                                                #'aidee--file-skeleton-test-fn
+(defvar eureka--file-skeletons (cache-make-cache #'eureka--file-skeleton-init-fn
+                                                #'eureka--file-skeleton-test-fn
                                                 #'ignore
                                                 :test #'equal)
   "Buffers' skeleton.
-Key is file name, value is of type `aidee-file-skeleton'.")
+Key is file name, value is of type `eureka-file-skeleton'.")
 
-(defun aidee--file-skeleton (filename)
+(defun eureka--file-skeleton (filename)
   "Get FILENAME's skeleton.
 Return nil if no treesitter support for FILENAME."
-  (let ((file-skeleton (cache-get filename aidee--file-skeletons filename))
+  (let ((file-skeleton (cache-get filename eureka--file-skeletons filename))
         skeleton)
     (unless file-skeleton
       (progn
-        (setq skeleton (aidee--retrieve-file-skeleton filename))
-        (setq file-skeleton (make-aidee-file-skeleton :filename filename
+        (setq skeleton (eureka--retrieve-file-skeleton filename))
+        (setq file-skeleton (make-eureka-file-skeleton :filename filename
                                                       :skeleton skeleton
-                                                      :timestamp (aidee--current-timestamp)))
-        (cache-put filename file-skeleton aidee--file-skeletons filename)))
+                                                      :timestamp (eureka--current-timestamp)))
+        (cache-put filename file-skeleton eureka--file-skeletons filename)))
     file-skeleton))
 
 
-(defvar aidee-treesit-suffix-language-map (make-hash-table :test #'equal)
+(defvar eureka-treesit-suffix-language-map (make-hash-table :test #'equal)
   "Use file name suffix to determine language.")
 
-(defvar aidee-treesit-major-mode-language-map (make-hash-table :test #'equal)
+(defvar eureka-treesit-major-mode-language-map (make-hash-table :test #'equal)
   "Use buffer's major mode (in string form) to determine language.")
 
-(defun aidee--buffer-treesit-language (&optional buf)
+(defun eureka--buffer-treesit-language (&optional buf)
   "Get the language of BUF, the default of which is current buffer."
   (let* ((buf (or buf (current-buffer)))
          (filename (buffer-file-name buf))
@@ -548,8 +533,8 @@ Return nil if no treesitter support for FILENAME."
       (setq mm (symbol-name major-mode))
       (when buffer-file-name
         (setq suffix (file-name-extension buffer-file-name)))
-      (setq language (or (gethash suffix aidee-treesit-suffix-language-map)
-                         (gethash mm aidee-treesit-major-mode-language-map)))
+      (setq language (or (gethash suffix eureka-treesit-suffix-language-map)
+                         (gethash mm eureka-treesit-major-mode-language-map)))
       (unless language
         (setq language
               (cond
@@ -565,31 +550,31 @@ Return nil if no treesitter support for FILENAME."
                 (intern (string-remove-suffix "-mode" mm)))))))
     language))
 
-(defvar-local aidee--treesit-parser nil
+(defvar-local eureka--treesit-parser nil
   "treesit parser of the current buffer.")
 
-(defun aidee--ensure-treesit-parser (&optional buf)
+(defun eureka--ensure-treesit-parser (&optional buf)
   (let ((buf (or buf (current-buffer)))
         language
         parser)
     (with-current-buffer buf
-      (setq parser aidee--treesit-parser)
+      (setq parser eureka--treesit-parser)
       (unless parser
-        (setq language (aidee--buffer-treesit-language))
+        (setq language (eureka--buffer-treesit-language))
         (if (and language
                  (treesit-language-available-p language))
             (progn
               (setq parser (treesit-parser-create language))
-              (setq-local aidee--treesit-parser parser))
+              (setq-local eureka--treesit-parser parser))
           (message "language: %s without parser available" language))))
     parser))
 
 
-(defvar aidee--indent-step nil)
-(defvar aidee--travel-result nil)
-(defvar aidee--surrounding-end-stack nil)
+(defvar eureka--indent-step nil)
+(defvar eureka--travel-result nil)
+(defvar eureka--surrounding-end-stack nil)
 
-(defun aidee--treesit-capture (node query &optional beg end node-only)
+(defun eureka--treesit-capture (node query &optional beg end node-only)
   "Capture nodes and return them as a pair.
 The car of the pair is context, and the cdr is context.body."
   (let (captures
@@ -602,7 +587,7 @@ The car of the pair is context, and the cdr is context.body."
         (puthash capture-name (cdr c) result)))
     result))
 
-(defun aidee--treesit-traval-sparse-tree-1 (language ele)
+(defun eureka--treesit-traval-sparse-tree-1 (language ele)
   (cond
    ((null ele)
     ;; nothing
@@ -611,12 +596,12 @@ The car of the pair is context, and the cdr is context.body."
     (let ((node-type (treesit-node-type ele))
           (node-start (treesit-node-start ele))
           (node-end (treesit-node-end ele))
-          (indentation (make-string (* aidee--indent-step 4) ?\s))
+          (indentation (make-string (* eureka--indent-step 4) ?\s))
           result
           query
           captures)
-      (when-let* ((query (aidee--treesit-language-node-query language node-type))
-                  (captures (aidee--treesit-capture ele query node-start node-end)))
+      (when-let* ((query (eureka--treesit-language-node-query language node-type))
+                  (captures (eureka--treesit-capture ele query node-start node-end)))
         (let (context
               context.body
               context.surrounding.start
@@ -641,31 +626,31 @@ The car of the pair is context, and the cdr is context.body."
               (when context.surrounding.end
                 (setq surrounding.end (buffer-substring-no-properties (treesit-node-start context.surrounding.end) (treesit-node-end context.surrounding.end))))
               ;; push to stack, pop one after dealing with a list. see [1]
-              (push (concat indentation surrounding.end "\n") aidee--surrounding-end-stack)
-              (setq aidee--travel-result (concat aidee--travel-result (concat indentation (buffer-substring-no-properties start-pos end-pos) surrounding.start "\n")))))))))
+              (push (concat indentation surrounding.end "\n") eureka--surrounding-end-stack)
+              (setq eureka--travel-result (concat eureka--travel-result (concat indentation (buffer-substring-no-properties start-pos end-pos) surrounding.start "\n")))))))))
    ((listp ele)
-    (setq aidee--indent-step (1+ aidee--indent-step))
+    (setq eureka--indent-step (1+ eureka--indent-step))
     (cl-dolist (e ele)
-      (aidee--treesit-traval-sparse-tree-1 language e))
-    (setq aidee--indent-step (1- aidee--indent-step))
+      (eureka--treesit-traval-sparse-tree-1 language e))
+    (setq eureka--indent-step (1- eureka--indent-step))
     ;; pop surrouding end [1]
-    (setq aidee--travel-result (concat aidee--travel-result (pop aidee--surrounding-end-stack))))))
+    (setq eureka--travel-result (concat eureka--travel-result (pop eureka--surrounding-end-stack))))))
 
-(defun aidee--treesit-traval-sparse-tree (language sparse-tree)
+(defun eureka--treesit-traval-sparse-tree (language sparse-tree)
   "Perform a depth-first, pre-order traversal of SPARSE-TREE."
-  (setq aidee--indent-step -1
-        aidee--travel-result nil
-        aidee--surrounding-end-stack nil)
+  (setq eureka--indent-step -1
+        eureka--travel-result nil
+        eureka--surrounding-end-stack nil)
   (when (null (car sparse-tree))
-    (setq aidee--indent-step -2))
-  (aidee--treesit-traval-sparse-tree-1 language sparse-tree)
-  aidee--travel-result)
+    (setq eureka--indent-step -2))
+  (eureka--treesit-traval-sparse-tree-1 language sparse-tree)
+  eureka--travel-result)
 
-(defun aidee--retrieve-buffer-skeleton (&optional buf)
+(defun eureka--retrieve-buffer-skeleton (&optional buf)
   (let* ((buf (or buf (current-buffer)))
-         (language (aidee--buffer-treesit-language buf))
-         (parser (aidee--ensure-treesit-parser buf))
-         (node-types (aidee--treesit-language-node-types language))
+         (language (eureka--buffer-treesit-language buf))
+         (parser (eureka--ensure-treesit-parser buf))
+         (node-types (eureka--treesit-language-node-types language))
          sparse-tree)
     (with-current-buffer buf
       (if (and node-types
@@ -677,46 +662,46 @@ The car of the pair is context, and the cdr is context.body."
                                  (lambda (node)
                                    (member (treesit-node-type node) node-types))))
               (when sparse-tree
-                (aidee--treesit-traval-sparse-tree language sparse-tree)))
-            aidee--travel-result)
+                (eureka--treesit-traval-sparse-tree language sparse-tree)))
+            eureka--travel-result)
         (message "parser or node types are nil")
         nil))))
 
-(defun aidee--retrieve-file-skeleton (filename)
-  (aidee-with-file-open-temporarily
+(defun eureka--retrieve-file-skeleton (filename)
+  (eureka-with-file-open-temporarily
       filename t
-      (aidee--retrieve-buffer-skeleton)))
+      (eureka--retrieve-buffer-skeleton)))
 
 ;;;; Repomap
 
-(defcustom aidee-file-deps-function nil
+(defcustom eureka-file-deps-function nil
   "A function to retrieve files the current file
 depends on. The function takes one argument, current
 file's name, and returns filenames as a list."
-  :group 'aidee
+  :group 'eureka
   :type 'function)
 
 
-;; There are four different kinds of context in aidee.
+;; There are four different kinds of context in eureka.
 ;; Here context means file skeleton or file content (in
 ;; this case, it's because file skeleton cannot be got).
 
 ;; The first kind is for projects, and is added manually.
-;; This kind is stored in `aidee-project''s session.
+;; This kind is stored in `eureka-project''s session.
 
 ;; The second kind is for files and is added automatically,
 ;; this kind of context is files retrieved by calling
-;; `aidee-file-deps-function'.
-;; This kind is stored in `aidee--file-context-automatically'.
+;; `eureka-file-deps-function'.
+;; This kind is stored in `eureka--file-context-automatically'.
 
 ;; The third kind is also for files and is added manually.
-;; This kind is stored in `aidee--file-context-manually'.
+;; This kind is stored in `eureka--file-context-manually'.
 
 ;; The forth kind is the current file, which is stored in
-;; `aidee--file-skeleton'.
+;; `eureka--file-skeleton'.
 
-(cl-defstruct aidee-project
-  "A structure that represents aidee project.
+(cl-defstruct eureka-project
+  "A structure that represents eureka project.
 
 ROOT is the project root, string.
 
@@ -724,48 +709,48 @@ CONTEXT is the context of this project, a list of filename.
 
 PROVIDER is the llm provider for this project.
 
-SESSION is the `aidee-session' for this project."
+SESSION is the `eureka-session' for this project."
   root
   context
   provider
   session
   )
 
-(cl-defstruct aidee-file-deps
+(cl-defstruct eureka-file-deps
   (filename)
   (deps)
   (timestamp))
 
-(defun aidee--file-deps-init-fn (data)
+(defun eureka--file-deps-init-fn (data)
   "DATA is a filename."
-  (aidee--file-modified-timestamp data))
+  (eureka--file-modified-timestamp data))
 
-(defun aidee--file-deps-test-fn (info data)
-  "INFO is what `aidee--file-deps-init-fn' returns.
+(defun eureka--file-deps-test-fn (info data)
+  "INFO is what `eureka--file-deps-init-fn' returns.
 DATA is a filename."
-  (> (aidee--file-modified-timestamp data) info))
+  (> (eureka--file-modified-timestamp data) info))
 
-(defvar aidee--file-deps (cache-make-cache #'aidee--file-deps-init-fn
-                                           #'aidee--file-deps-test-fn
+(defvar eureka--file-deps (cache-make-cache #'eureka--file-deps-init-fn
+                                           #'eureka--file-deps-test-fn
                                            #'ignore
                                            :test #'equal)
   "Buffers' deps.
-Key is file name, value is of type `aidee-file-deps'.")
+Key is file name, value is of type `eureka-file-deps'.")
 
 
-(defvar-local aidee--file-context-automatically nil
+(defvar-local eureka--file-context-automatically nil
   "File context which is calculated automatically.
 This is a list of filename.")
 
-(defvar-local aidee--file-context-manually nil
+(defvar-local eureka--file-context-manually nil
   "File context which is added manually.
 This is a list of filename.")
 
-(defvar aidee--projects (make-hash-table :test #'equal)
+(defvar eureka--projects (make-hash-table :test #'equal)
   "Each project (represented by project root) and
-its `aidee-project'.")
+its `eureka-project'.")
 
-(defun aidee--retrieve-calls-by-lspce ()
+(defun eureka--retrieve-calls-by-lspce ()
   (cl-labels
       ((lsp--call-hierarchy (method item tag)
          (let (calls)
@@ -790,7 +775,7 @@ its `aidee-project'.")
             (setq outgoings (append outgoings (lsp--call-hierarchy method item tag))))))
       (list incomings outgoings))))
 
-;; NOTE How `aidee--retrieve-file-deps-by-lspce-1' works:
+;; NOTE How `eureka--retrieve-file-deps-by-lspce-1' works:
 ;; - Open FILENAME.
 
 ;; - Use textDocument/documentSymbol to query desired symbols.
@@ -801,10 +786,10 @@ its `aidee-project'.")
 ;; - Retrieve outgoning calls and get files that FILENAME directly depends on.
 
 ;; - Merge and dedup filenames
-(defun aidee--retrieve-file-deps-by-lspce-1 (filename)
+(defun eureka--retrieve-file-deps-by-lspce-1 (filename)
   (when (and (fboundp 'lspce-mode)
              (file-exists-p filename))
-    (aidee-with-file-open-temporarily
+    (eureka-with-file-open-temporarily
         filename t
         (when lspce-mode
           (let (filenames
@@ -837,77 +822,77 @@ its `aidee-project'.")
                          (start (gethash "start" selectionRange))
                          (pos (lspce--lsp-position-to-point start)))
                     (goto-char pos)
-                    (setq calls (aidee--retrieve-calls-by-lspce))
+                    (setq calls (eureka--retrieve-calls-by-lspce))
                     (setq incomings (append incomings (nth 0 calls))
                           outgoings (append outgoings (nth 1 calls)))))))
             (cl-dolist (item (append incomings outgoings))
               (when-let* ((uri (gethash "uri" item))
-                          (path (aidee--uri-to-path uri)))
+                          (path (eureka--uri-to-path uri)))
                 (when (and (string-prefix-p lspce--root-uri uri)
                            (not (string-equal filename path)))
                   (push path deps))))
             (delete-dups deps))))))
 
-(defun aidee--retrieve-file-deps (filename)
+(defun eureka--retrieve-file-deps (filename)
   "Get files depending on or depended by FILENAME."
-  (let ((deps (cache-get filename aidee--file-deps filename)))
+  (let ((deps (cache-get filename eureka--file-deps filename)))
     (unless deps
-      (setq deps (and aidee-file-deps-function
-                      (functionp aidee-file-deps-function)
-                      (funcall aidee-file-deps-function filename)))
+      (setq deps (and eureka-file-deps-function
+                      (functionp eureka-file-deps-function)
+                      (funcall eureka-file-deps-function filename)))
       (when deps
-        (cache-put filename deps aidee--file-deps filename)))
+        (cache-put filename deps eureka--file-deps filename)))
     deps))
 
 ;;;###autoload
-(defun aidee-add-local-context ()
+(defun eureka-add-local-context ()
   "Add a file to local manual context."
   (interactive)
-  (let ((root-uri (aidee--root-uri))
+  (let ((root-uri (eureka--root-uri))
         filename)
     (setq filename (read-file-name "Add a file to local context: "))
     (when (and filename
                root-uri
                (file-exists-p filename))
-      (setq aidee--file-context-manually (delete-dups (push filename aidee--file-context-manually))))))
+      (setq eureka--file-context-manually (delete-dups (push filename eureka--file-context-manually))))))
 
 ;;;###autoload
-(defun aidee-remove-local-context ()
+(defun eureka-remove-local-context ()
   "Remove a file from local manual context."
   (interactive)
   (let (filename)
     (setq filename (completing-read "Remove a file from local context: "
-                                    aidee--file-context-manually))
+                                    eureka--file-context-manually))
     (when (and filename
                (file-exists-p filename))
-      (setq aidee--file-context-manually (delete filename aidee--file-context-manually)))))
+      (setq eureka--file-context-manually (delete filename eureka--file-context-manually)))))
 
-(defun aidee--project (root-uri)
+(defun eureka--project (root-uri)
   (when root-uri
-    (let ((project (gethash root-uri aidee--projects))
+    (let ((project (gethash root-uri eureka--projects))
           session)
       (unless project
-        (setq session (aidee-new-session aidee-provider root-uri))
-        (setq project (make-aidee-project :root root-uri :context nil :provider aidee-provider :session session))
-        (puthash root-uri project aidee--projects))
+        (setq session (eureka-new-session eureka-provider root-uri))
+        (setq project (make-eureka-project :root root-uri :context nil :provider eureka-provider :session session))
+        (puthash root-uri project eureka--projects))
       project)))
 
-(defun aidee-project-refresh-session ()
+(defun eureka-project-refresh-session ()
   (interactive)
   (let* ((root-uri (lspce--root-uri))
          project
          session)
     (when root-uri
-      (setq project (gethash root-uri aidee--projects))
+      (setq project (gethash root-uri eureka--projects))
       (when project
-        (setq session (aidee-new-session aidee-provider root-uri))
-        (setf (aidee-project-session project) session)))))
+        (setq session (eureka-new-session eureka-provider root-uri))
+        (setf (eureka-project-session project) session)))))
 
 ;;;###autoload
-(defun aidee-add-project-context ()
+(defun eureka-add-project-context ()
   "Add a file to project context."
   (interactive)
-  (let ((root-uri (aidee--root-uri))
+  (let ((root-uri (eureka--root-uri))
         filename
         context
         project
@@ -916,48 +901,48 @@ its `aidee-project'.")
     (when (and filename
                root-uri
                (file-exists-p filename))
-      (setq project (aidee--project root-uri))
+      (setq project (eureka--project root-uri))
       (when project
-        (setq context (aidee-project-context project))
+        (setq context (eureka-project-context project))
         (setq context (delete-dups (push filename context)))
-        (setf (aidee-project-context project) context)
-        (puthash root-uri project aidee--projects)))))
+        (setf (eureka-project-context project) context)
+        (puthash root-uri project eureka--projects)))))
 
 ;;;###autoload
-(defun aidee-remove-project-context ()
+(defun eureka-remove-project-context ()
   "Remove a file from project context."
   (interactive)
-  (let ((root-uri (aidee--root-uri))
+  (let ((root-uri (eureka--root-uri))
         filename
         context
         project)
-    (setq project (aidee--project root-uri))
+    (setq project (eureka--project root-uri))
     (when project
-      (setq context (aidee-project-context project))
+      (setq context (eureka-project-context project))
       (setq filename (completing-read "Remove a file from project context: " context))
       (when (and filename
                  (file-exists-p filename))
-        (setf (aidee-project-context project) (delete filename context))))))
+        (setf (eureka-project-context project) (delete filename context))))))
 
 ;; TODO add more associations
-(defvar aidee--language-ids
+(defvar eureka--language-ids
   '(("py" . "python")
     ("el" . "elisp")))
 
-(defun aidee--file-language-id (filename)
+(defun eureka--file-language-id (filename)
   "Get language id of FILENAME."
   (let (suffix
         language-id)
     (setq suffix (file-name-extension filename))
-    (setq language-id (assoc-default suffix aidee--language-ids))
+    (setq language-id (assoc-default suffix eureka--language-ids))
     (unless language-id
       (setq language-id suffix))
     language-id))
 
-(defun aidee--format-file-context (filename content)
+(defun eureka--format-file-context (filename content)
   "Format FILENAME and its CONTENT as context in the specified format."
   (let (context
-        (language-id (aidee--file-language-id filename)))
+        (language-id (eureka--file-language-id filename)))
     (concat "```\n"
             filename "\n"
             "```\n"
@@ -966,12 +951,12 @@ its `aidee-project'.")
             "```"
             "\n\n")))
 
-(defun aidee--file-context (&optional automatic-p manual-p project-p)
+(defun eureka--file-context (&optional automatic-p manual-p project-p)
   "Calculate context of current buffer file."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
-           (root-uri (aidee--root-uri))
-           (project (aidee--project root-uri))
+           (root-uri (eureka--root-uri))
+           (project (eureka--project root-uri))
            file-skeleton
            deps
            context)
@@ -980,78 +965,78 @@ its `aidee-project'.")
         (setq deps (list filename))
         (cond
          (automatic-p
-          (setq deps (append deps (aidee--retrieve-file-deps filename))))
+          (setq deps (append deps (eureka--retrieve-file-deps filename))))
          (manual-p
-          (setq deps (append deps aidee--file-context-manually)))
+          (setq deps (append deps eureka--file-context-manually)))
          ((and project-p
                project)
-          (setq deps (append deps (aidee-project-context project)))))
+          (setq deps (append deps (eureka-project-context project)))))
         (setq deps (delete filename (delete-dups deps)))
-        (setq context (aidee--format-file-context
+        (setq context (eureka--format-file-context
                        filename
                        (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
-          (setq file-skeleton (aidee--file-skeleton dep))
+          (setq file-skeleton (eureka--file-skeleton dep))
           (when file-skeleton
             (setq context (concat context
-                                  (aidee--format-file-context
-                                   (aidee-file-skeleton-filename file-skeleton)
-                                   (aidee-file-skeleton-skeleton file-skeleton)))))))
+                                  (eureka--format-file-context
+                                   (eureka-file-skeleton-filename file-skeleton)
+                                   (eureka-file-skeleton-skeleton file-skeleton)))))))
       context)))
 
-(defun aidee--project-context ()
+(defun eureka--project-context ()
   "Calculate context of current buffer's project."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
-           (root-uri (aidee--root-uri))
-           (project (aidee--project root-uri))
+           (root-uri (eureka--root-uri))
+           (project (eureka--project root-uri))
            file-skeleton
            deps
            context)
       (when (and filename
                  project)
-        (setq deps (delete-dups (aidee-project-context project)))
-        (setq context (aidee--format-file-context
+        (setq deps (delete-dups (eureka-project-context project)))
+        (setq context (eureka--format-file-context
                        filename
                        (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
-          (setq file-skeleton (aidee--file-skeleton dep))
+          (setq file-skeleton (eureka--file-skeleton dep))
           (when file-skeleton
             (setq context (concat context
-                                  (aidee--format-file-context
-                                   (aidee-file-skeleton-filename file-skeleton)
-                                   (aidee-file-skeleton-skeleton file-skeleton)))))))
+                                  (eureka--format-file-context
+                                   (eureka-file-skeleton-filename file-skeleton)
+                                   (eureka-file-skeleton-skeleton file-skeleton)))))))
       context)))
 
 ;;;; Helping functions
-(defun aidee-latest-response ()
+(defun eureka-latest-response ()
   (interactive)
   (with-current-buffer (current-buffer)
-    (let* ((root-uri (aidee--root-uri))
+    (let* ((root-uri (eureka--root-uri))
            response)
       (when root-uri
-        (when-let* ((project (aidee--project root-uri))
-                    (session (aidee-project-session project)))
-          (setq response (aidee-session-response session))))
+        (when-let* ((project (eureka--project root-uri))
+                    (session (eureka-project-session project)))
+          (setq response (eureka-session-response session))))
       (message "response: %s" response))))
 
-(defun aidee-latest-prompt ()
+(defun eureka-latest-prompt ()
   (interactive)
   (with-current-buffer (current-buffer)
-    (let* ((root-uri (aidee--root-uri))
+    (let* ((root-uri (eureka--root-uri))
            prompt)
       (when root-uri
-        (when-let* ((project (aidee--project root-uri))
-                    (session (aidee-project-session project)))
-          (setq prompt (aidee-session-prompt session))))
+        (when-let* ((project (eureka--project root-uri))
+                    (session (eureka-project-session project)))
+          (setq prompt (eureka-session-prompt session))))
       (message "prompt: %s" prompt))))
 
-(provide 'aidee-coding)
+(provide 'eureka-coding)
 
 ;; Local Variables:
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:
 
-;;; aidee-coding.el ends here
+;;; eureka-coding.el ends here
 

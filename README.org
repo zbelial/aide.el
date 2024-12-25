@@ -3,6 +3,6 @@
 #+TITLE: README
 #+Date: 24-10-15
 
-AI powered Development Environtment for Emacs.
+Eureka, an AI-based programming assistant for Emacs.
 
 

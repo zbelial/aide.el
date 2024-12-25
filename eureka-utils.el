@@ -1,4 +1,4 @@
-;;; aidee-utils.el  --- AI powered Development Environtment for Emacs. -*- lexical-binding: t; -*-
+;;; eureka-utils.el  --- AI powered Development Environment for Emacs. -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024 zbelial zjyzhaojiyang@gmail.com
 
@@ -6,7 +6,7 @@
 
 ;; Maintainer: zbelial zjyzhaojiyang@gmail.com
 
-;; Homepage: https://github.com/zbelial/aidee.el.git
+;; Homepage: https://github.com/zbelial/eureka.el.git
 ;; Version: 0.1.0
 ;; Keywords: AI LLM Emacs Coding
 
@@ -33,13 +33,13 @@
 
 
 ;;;; Other routines
-(defconst aidee--uri-path-allowed-chars
+(defconst eureka--uri-path-allowed-chars
   (let ((vec (copy-sequence url-path-allowed-chars)))
     (aset vec ?: nil)
     vec)
   "Like `url-path-allows-chars' but more restrictive.")
 
-(defun aidee--path-to-uri (path)
+(defun eureka--path-to-uri (path)
   "URIfy PATH."
   (let* ((truepath (file-truename path))
          (full-name (directory-file-name (file-local-name truepath))))
@@ -51,14 +51,14 @@
                   prefix
                   (url-hexify-string
                    (substring full-name (length prefix))
-                   aidee--uri-path-allowed-chars)))
+                   eureka--uri-path-allowed-chars)))
       (concat "file://"
               (url-hexify-string
                ;; Again watch out for trampy paths.
                (directory-file-name (file-local-name truepath))
-               aidee--uri-path-allowed-chars)))))
+               eureka--uri-path-allowed-chars)))))
 
-(defun aidee--uri-to-path (uri)
+(defun eureka--uri-to-path (uri)
   "Convert URI to a file path."
   (when (keywordp uri)
     (setq uri (substring (symbol-name uri) 1)))
@@ -67,12 +67,12 @@
         (substring retval 1)
       retval)))
 
-(defun aidee--root-uri ()
+(defun eureka--root-uri ()
   (when-let* ((proj (project-current))
               (root-uri (project-root proj)))
-    (aidee--path-to-uri root-uri)))
+    (eureka--path-to-uri root-uri)))
 
-(defmacro aidee-with-file-open-temporarily (file close-after-body &rest body)
+(defmacro eureka-with-file-open-temporarily (file close-after-body &rest body)
   "Load FILE and then evaluate BODY with FILE's buffer the current buffer.
 If FILE has not been loaded, and CLOSE-AFTER-BODY is not nil,
 then kill the buffer after evaluating BODY.
@@ -96,14 +96,14 @@ The value returned is the value of the last form in BODY."
            (kill-buffer ,tempvar-buffer))
          ,tempvar-result))))
 
-(defun aidee--current-timestamp ()
+(defun eureka--current-timestamp ()
   (time-convert (current-time) 'integer))
 
-(provide 'aidee-utils)
+(provide 'eureka-utils)
 
 ;; Local Variables:
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:
 
-;;; aidee-utils.el ends here
+;;; eureka-utils.el ends here

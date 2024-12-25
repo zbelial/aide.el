@@ -1,4 +1,4 @@
-;;; aidee.el  --- AI powered Development Environtment for Emacs. -*- lexical-binding: t; -*-
+;;; eureka.el  --- AI powered Development Environment for Emacs. -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024 zbelial zjyzhaojiyang@gmail.com
 
@@ -6,9 +6,9 @@
 
 ;; Maintainer: zbelial zjyzhaojiyang@gmail.com
 
-;; Homepage: https://github.com/zbelial/aidee.el.git
+;; Homepage: https://github.com/zbelial/eureka.el.git
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (llm "0.20.0") (spinner "1.7.4") (compat "29.1"))
+;; Package-Requires: ((emacs "29.1") (llm "0.20.0") (spinner "1.7.4") (compat "29.1") ("markdown-mode" "2.5"))
 ;; Keywords: AI LLM Emacs Coding
 
 
@@ -31,14 +31,14 @@
 
 
 ;;; Code:
-(require 'aidee-coding)
+(require 'eureka-coding)
 
-(provide 'aidee)
+(provide 'eureka)
 
 ;; Local Variables:
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:
 
-;;; aidee.el ends here
+;;; eureka.el ends here
 
