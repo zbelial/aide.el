@@ -41,7 +41,7 @@
   :type 'string)
 
 ;; 4 placeholders: context, context format, user instrument and suffix.
-(defcustom eureka-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s. %s"
+(defcustom eureka-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s.\n%s"
   "Prompt template for all project code task."
   :group 'eureka
   :type 'string)
@@ -51,12 +51,12 @@
   :group 'eureka
   :type 'string)
 
-(defcustom eureka-project-code-improve-instruction-template "enhance the following code: \n```%s\n```"
+(defcustom eureka-project-code-improve-instruction-template "enhance the following code: \n```\n%s\n```"
   "Prompt template for `eureka-project-code-improve'."
   :group 'eureka
   :type 'string)
 
-(defcustom eureka-project-code-explain-instruction-template "explain the following code in a detailed way: \n```%s\n```"
+(defcustom eureka-project-code-explain-instruction-template "explain the following code in a detailed way: \n```\n%s\n```"
   "Prompt template for `eureka-project-code-explain'."
   :group 'eureka
   :type 'string)
@@ -77,8 +77,7 @@ Every *CONTEXT block* follows this format:
 "
   "Context format."
   :group 'eureka
-  :type 'string
-  )
+  :type 'string)
 
 ;; 1 placeholder(s): language
 (defcustom eureka-project-code-edit-suffix-template "Always use best practices when coding.
@@ -106,14 +105,16 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 # *SEARCH/REPLACE block* Rules:
 
 Every *SEARCH/REPLACE block* must use this format:
-1. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
-2. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
-3. The start of search block: <<<<<<< SEARCH
-4. A contiguous chunk of lines to search for in the existing source code
-5. The dividing line: =======
-6. The lines to replace into the source code
-7. The end of the replace block: >>>>>>> REPLACE
-8. The closing fence: ```
+1. The opening fence: ```
+2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
+3. The closing fence: ```
+4. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
+5. The start of search block: <<<<<<< SEARCH
+6. A contiguous chunk of lines to search for in the existing source code
+7. The dividing line: =======
+8. The lines to replace into the source code
+9. The end of the replace block: >>>>>>> REPLACE
+10. The closing fence: ```
 
 Use the *FULL* file path, as shown to you by the user.
 
@@ -360,7 +361,7 @@ When START is non-nil the search will start at that index."
         (setq session-file (eureka-session-file session))
         (setq buffer (find-file-noselect session-file))
         (setf (eureka-session-buffer session) buffer))
-      (display buffer)
+      (display-buffer buffer)
       (eureka-stream
        (format
         eureka-project-code-prompt-template
@@ -430,7 +431,7 @@ When START is non-nil the search will start at that index."
         (setq session-file (eureka-session-file session))
         (setq buffer (find-file-noselect session-file))
         (setf (eureka-session-buffer session) buffer))
-      (display buffer)
+      (display-buffer buffer)
       (eureka-stream
        (format
         eureka-project-code-prompt-template
@@ -713,8 +714,7 @@ SESSION is the `eureka-session' for this project."
   root
   context
   provider
-  session
-  )
+  session)
 
 (cl-defstruct eureka-file-deps
   (filename)
@@ -786,7 +786,7 @@ its `eureka-project'.")
 ;; - Retrieve outgoning calls and get files that FILENAME directly depends on.
 
 ;; - Merge and dedup filenames
-(defun eureka--retrieve-file-deps-by-lspce-1 (filename)
+(defun eureka--retrieve-file-deps-by-lspce (filename)
   (when (and (fboundp 'lspce-mode)
              (file-exists-p filename))
     (eureka-with-file-open-temporarily
