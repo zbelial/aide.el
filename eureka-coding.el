@@ -298,13 +298,18 @@ When START is non-nil the search will start at that index."
                     (when (and filename
                                edits)
                       (setq action (make-eureka--file-action :filename filename
-                                                            :edits edits))
+                                                             :edits edits))
                       (push action actions))
                     (setq start total-end))
                 (setq stop? t))))
           (nreverse actions))
       (message "Ill-formed response."))))
 
+;; FIXME ediff
+;; 1. filename is a new created file
+;; 2. ediff-buffers is async, it won't block.
+;; 3. tmpbuf name not changed for a new filename
+;; Maybe can create new directories for files to be changed and compare directories?
 (defun eureka--project-code-edit-done-callback (text &optional on-done)
   (when ellama-session-auto-save
     (save-buffer))
@@ -346,8 +351,8 @@ When START is non-nil the search will start at that index."
 (defun eureka-project-code-edit (task)
   "Do some coding edit in the project."
   (interactive "sWhat needs to be done: ")
-  (let* ((root-uri (eureka--root-uri))
-         (project (eureka--project root-uri))
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
          (context (eureka--file-context t t t))
          session
          session-file
@@ -411,8 +416,8 @@ When START is non-nil the search will start at that index."
 (defun eureka-project-code-improve ()
   "Improve selected code or the code in current buffer."
   (interactive)
-  (let* ((root-uri (eureka--root-uri))
-         (project (eureka--project root-uri))
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
          (context (eureka--file-context t t t))
          session
          session-file
@@ -759,9 +764,7 @@ its `eureka-project'.")
                                     (gethash tag item))
                                   response)))
            calls)))
-    (let ((root-uri lspce--root-uri)
-          (lsp-type lspce--lsp-type)
-          incomings
+    (let (incomings
           outgoings)
       (when-let* ((root-items (when (lspce--server-capable-chain "callHierarchyProvider")
                                 (lspce--request "textDocument/prepareCallHierarchy" (lspce--make-textDocumentPositionParams)))))
@@ -848,11 +851,11 @@ its `eureka-project'.")
 (defun eureka-add-local-context ()
   "Add a file to local manual context."
   (interactive)
-  (let ((root-uri (eureka--root-uri))
+  (let ((project-root (eureka--project-root))
         filename)
     (setq filename (read-file-name "Add a file to local context: "))
     (when (and filename
-               root-uri
+               project-root
                (file-exists-p filename))
       (setq eureka--file-context-manually (delete-dups (push filename eureka--file-context-manually))))))
 
@@ -867,56 +870,56 @@ its `eureka-project'.")
                (file-exists-p filename))
       (setq eureka--file-context-manually (delete filename eureka--file-context-manually)))))
 
-(defun eureka--project (root-uri)
-  (when root-uri
-    (let ((project (gethash root-uri eureka--projects))
+(defun eureka--project (project-root)
+  (when project-root
+    (let ((project (gethash project-root eureka--projects))
           session)
       (unless project
-        (setq session (eureka-new-session eureka-provider root-uri))
-        (setq project (make-eureka-project :root root-uri :context nil :provider eureka-provider :session session))
-        (puthash root-uri project eureka--projects))
+        (setq session (eureka-new-session eureka-provider project-root))
+        (setq project (make-eureka-project :root project-root :context nil :provider eureka-provider :session session))
+        (puthash project-root project eureka--projects))
       project)))
 
 (defun eureka-project-refresh-session ()
   (interactive)
-  (let* ((root-uri (lspce--root-uri))
+  (let* ((project-root (eureka--project-root))
          project
          session)
-    (when root-uri
-      (setq project (gethash root-uri eureka--projects))
+    (when project-root
+      (setq project (gethash project-root eureka--projects))
       (when project
-        (setq session (eureka-new-session eureka-provider root-uri))
+        (setq session (eureka-new-session eureka-provider project-root))
         (setf (eureka-project-session project) session)))))
 
 ;;;###autoload
 (defun eureka-add-project-context ()
   "Add a file to project context."
   (interactive)
-  (let ((root-uri (eureka--root-uri))
+  (let ((project-root (eureka--project-root))
         filename
         context
         project
         session)
     (setq filename (read-file-name "Add a file to local context: "))
     (when (and filename
-               root-uri
+               project-root
                (file-exists-p filename))
-      (setq project (eureka--project root-uri))
+      (setq project (eureka--project project-root))
       (when project
         (setq context (eureka-project-context project))
         (setq context (delete-dups (push filename context)))
         (setf (eureka-project-context project) context)
-        (puthash root-uri project eureka--projects)))))
+        (puthash project-root project eureka--projects)))))
 
 ;;;###autoload
 (defun eureka-remove-project-context ()
   "Remove a file from project context."
   (interactive)
-  (let ((root-uri (eureka--root-uri))
+  (let ((project-root (eureka--project-root))
         filename
         context
         project)
-    (setq project (eureka--project root-uri))
+    (setq project (eureka--project project-root))
     (when project
       (setq context (eureka-project-context project))
       (setq filename (completing-read "Remove a file from project context: " context))
@@ -955,13 +958,13 @@ its `eureka-project'.")
   "Calculate context of current buffer file."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
-           (root-uri (eureka--root-uri))
-           (project (eureka--project root-uri))
+           (project-root (eureka--project-root))
+           (project (eureka--project project-root))
            file-skeleton
            deps
            context)
       (when (and filename
-                 root-uri)
+                 project-root)
         (setq deps (list filename))
         (cond
          (automatic-p
@@ -988,8 +991,8 @@ its `eureka-project'.")
   "Calculate context of current buffer's project."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
-           (root-uri (eureka--root-uri))
-           (project (eureka--project root-uri))
+           (project-root (eureka--project-root))
+           (project (eureka--project project-root))
            file-skeleton
            deps
            context)
@@ -1012,10 +1015,10 @@ its `eureka-project'.")
 (defun eureka-latest-response ()
   (interactive)
   (with-current-buffer (current-buffer)
-    (let* ((root-uri (eureka--root-uri))
+    (let* ((project-root (eureka--project-root))
            response)
-      (when root-uri
-        (when-let* ((project (eureka--project root-uri))
+      (when project-root
+        (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq response (eureka-session-response session))))
       (message "response: %s" response))))
@@ -1023,10 +1026,10 @@ its `eureka-project'.")
 (defun eureka-latest-prompt ()
   (interactive)
   (with-current-buffer (current-buffer)
-    (let* ((root-uri (eureka--root-uri))
+    (let* ((project-root (eureka--project-root))
            prompt)
-      (when root-uri
-        (when-let* ((project (eureka--project root-uri))
+      (when project-root
+        (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq prompt (eureka-session-prompt session))))
       (message "prompt: %s" prompt))))

@@ -67,10 +67,10 @@
         (substring retval 1)
       retval)))
 
-(defun eureka--root-uri ()
+(defun eureka--project-root ()
   (when-let* ((proj (project-current))
-              (root-uri (project-root proj)))
-    (eureka--path-to-uri root-uri)))
+              (root (project-root proj)))
+    root))
 
 (defmacro eureka-with-file-open-temporarily (file close-after-body &rest body)
   "Load FILE and then evaluate BODY with FILE's buffer the current buffer.
