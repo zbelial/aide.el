@@ -185,9 +185,10 @@ Too low value can break generated code by splitting long comment lines."
 ;;;; Session
 
 (defcustom eureka-sessions-directory (file-truename
-				     (file-name-concat
-				      user-emacs-directory
-				      "eureka-sessions"))
+				      (file-name-concat
+				       user-emacs-directory
+				       "eureka"
+                                       "sessions"))
   "Directory for saved eureka sessions."
   :type 'string
   :group 'eureka)

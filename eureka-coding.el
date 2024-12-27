@@ -149,6 +149,15 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
   :group 'eureka
   :type 'string)
 
+(defcustom eureka-ediff-directory (file-truename
+				   (file-name-concat
+				    user-emacs-directory
+                                    "eureka"
+				    "ediff"))
+  "Directory for storing temp project files to be used by ediff."
+  :type 'string
+  :group 'eureka)
+
 (defvar eureka--code-search-label "<<<<<<< SEARCH")
 (defvar eureka--code-replace-label ">>>>>>> REPLACE")
 

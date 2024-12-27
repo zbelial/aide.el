@@ -99,6 +99,9 @@ The value returned is the value of the last form in BODY."
 (defun eureka--current-timestamp ()
   (time-convert (current-time) 'integer))
 
+(defun eureka--ensure-directory (dir)
+  )
+
 (provide 'eureka-utils)
 
 ;; Local Variables:
