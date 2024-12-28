@@ -33,6 +33,8 @@
 (require 'cl-lib)
 (require 'eureka-core)
 (require 'eureka-utils)
+;; from https://github.com/zbelial/cache,
+;; which is forked from https://github.com/nflath/cache
 (require 'cache)
 
 (defcustom eureka-coding-language "English"
