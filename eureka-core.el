@@ -217,17 +217,16 @@ RESPONSE is a variable contains last response in this session. "
   "Return eureka session buffer by provided ID."
   (gethash id eureka--active-sessions))
 
-(defun eureka-generate-name-by-words (provider label)
-  "Generate name for ACTION by PROVIDER by getting first N words from PROMPT."
-  (let* ((cleaned-label (replace-regexp-in-string "/" "_" label))
-         (prompt-words (split-string cleaned-label)))
+(defun eureka-generate-name-by-words (llm-name label)
+  "Generate name by LABEL (project root) and LLM-NAME."
+  (let* ((cleaned-label (replace-regexp-in-string "/" "_" label)))
     (concat
      (string-join
       (flatten-tree
        (list "eureka"
              cleaned-label))
       "-")
-     (format "(%s)" (llm-name provider)))))
+     (format "(%s)" llm-name))))
 
 (defun eureka-get-current-time ()
   "Return string representation of current time."
@@ -235,7 +234,7 @@ RESPONSE is a variable contains last response in this session. "
    "\\([0-9]\\{2\\}\\)\\([0-9]\\{2\\}\\)\\'" "\\1:\\2"
    (format-time-string "%FT%TT%3N" (current-time))))
 
-(defun eureka-generate-name-by-time (provider label)
+(defun eureka-generate-name-by-time (llm-name label)
   "Generate name for eureka session by current time."
   (let* ((cleaned-label (replace-regexp-in-string "/" "_" label)))
     (concat
@@ -244,15 +243,15 @@ RESPONSE is a variable contains last response in this session. "
             cleaned-label
             (eureka-get-current-time))
       "-")
-     (format "(%s)" (llm-name provider)))))
+     (format "(%s)" llm-name))))
 
-(defun eureka-generate-name (provider label)
+(defun eureka-generate-name (llm-name label)
   "Generate name for eureka ACTION by PROVIDER according to PROMPT."
-  (replace-regexp-in-string "/" "_" (funcall eureka-naming-scheme provider label)))
+  (replace-regexp-in-string "/" "_" (funcall eureka-naming-scheme llm-name label)))
 
-(defun eureka-generate-temp-name (provider)
+(defun eureka-generate-temp-name (llm-name)
   "Generate name for eureka ACTION by PROVIDER according to PROMPT."
-  (replace-regexp-in-string "/" "_" (eureka-generate-name-by-time provider "temp")))
+  (replace-regexp-in-string "/" "_" (eureka-generate-name-by-time llm-name "temp")))
 
 (defun eureka-get-session-file-extension ()
   "Return file extension based om the current mode.
@@ -263,7 +262,7 @@ Defaults to md, but supports org.  Depends on \"eureka-major-mode.\""
   "Create new eureka session with unique id.
 Provided PROVIDER and NAME will be used in new session.
 If EPHEMERAL non nil new session will not be associated with any file."
-  (let* ((name (eureka-generate-name provider label))
+  (let* ((name (eureka-generate-name (llm-name provider) label))
 	 (count 1)
 	 (name-with-suffix (format "%s %d" name count))
 	 (id (if (not (eureka-get-session-buffer name))
@@ -353,11 +352,13 @@ strings before they're inserted into the BUFFER.
 file by default.
 
 :on-error ON-ERROR -- ON-ERROR a function that's called with an error message on
-failure (with BUFFER current).
+failure (with BUFFER current) and session-id.
 
-:on-done ON-DONE -- ON-DONE a function or list of functions that's called with
- the full response text when the request completes (with BUFFER current)."
+:on-done ON-DONE -- ON-DONE a function that's called with
+ the full response text when the request completes (with BUFFER current) and session id."
   (let* ((session (plist-get args :session))
+         (session-id (when session
+                       (eureka-session-id session)))
          (provider (or (plist-get args :provider)
                        (if session
                            (eureka-session-provider session)
@@ -365,7 +366,7 @@ failure (with BUFFER current).
 	 (buffer (or (plist-get args :buffer)
 		     (when session
 		       (eureka-session-buffer session))
-		     (get-buffer-create (eureka-generate-temp-name provider))))
+		     (get-buffer-create (eureka-generate-temp-name (llm-name provider)))))
 	 (point (or (plist-get args :point)
 		    (with-current-buffer buffer (point))))
 	 (filter (or (plist-get args :filter) #'identity))
@@ -428,15 +429,13 @@ failure (with BUFFER current).
 				    (funcall insert-text (string-trim text))
                                     (with-current-buffer invoke-buffer
                                       (spinner-stop))
+                                    (when session
+                                      (setf (eureka-session-response session) text))
+                                    (funcall donecb text session-id)
 				    (with-current-buffer buffer
 				      (accept-change-group eureka--change-group)
-				      (if (and (listp donecb)
-					       (functionp (car donecb)))
-					  (mapc (lambda (fn) (funcall fn text))
-						donecb)
-					(funcall donecb text))
-                                      (when session
-                                        (setf (eureka-session-response session) text))
+                                      (when ellama-session-auto-save
+                                        (save-buffer))
 				      (setq eureka--current-request nil)
 				      (eureka-request-mode -1)))
 	                          (lambda (_ msg)
@@ -456,7 +455,7 @@ ARGS contains keys for fine control.
   (let* ((session (plist-get args :session))
          (provider (or (plist-get args :provider)
 		       eureka-provider))
-	 (buffer (get-buffer-create (eureka-generate-temp-name provider))))
+	 (buffer (get-buffer-create (eureka-generate-temp-name (llm-name provider)))))
     (display-buffer buffer (when eureka-instant-display-action-function
 			     `((ignore . (,eureka-instant-display-action-function)))))
     (eureka-stream prompt

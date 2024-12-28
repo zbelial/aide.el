@@ -105,16 +105,16 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 # *SEARCH/REPLACE block* Rules:
 
 Every *SEARCH/REPLACE block* must use this format:
-1. The opening fence: ```
+1. The first opening fence: ```
 2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
-3. The closing fence: ```
-4. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
+3. The first closing fence: ```
+4. The second opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
 5. The start of search block: <<<<<<< SEARCH
 6. A contiguous chunk of lines to search for in the existing source code
 7. The dividing line: =======
 8. The lines to replace into the source code
 9. The end of the replace block: >>>>>>> REPLACE
-10. The closing fence: ```
+10. The second closing fence: ```
 
 Use the *FULL* file path, as shown to you by the user.
 
@@ -237,6 +237,7 @@ When START is non-nil the search will start at that index."
                    (end (cadr match-data-list))
                    (subs (if (and beg end) (list (substring s beg end) beg end) nil)))
               (setq result (cons subs result))
+              ;; (message "result: %s" result)
               (setq match-data-list
                     (cddr match-data-list))))
           (nreverse result)))))
@@ -289,12 +290,14 @@ When START is non-nil the search will start at that index."
         total-end
         start
         stop?)
+    (message "text: \n[%s]" text)
     (if (= (eureka--count-substring eureka--code-search-label text)
            (eureka--count-substring eureka--code-replace-label text))
         (progn
           (while (not stop?)
             (progn
               (setq match-result (eureka--match eureka--project-code-edit-pattern text start))
+              ;; (message "match-result: %s" match-result)
               (if (and match-result
                        (length> match-result 2))
                   (progn
@@ -314,14 +317,80 @@ When START is non-nil the search will start at that index."
           (nreverse actions))
       (message "Ill-formed response."))))
 
+(defun eureka--get-project-from-session-id (session-id)
+  (when-let* ((project-root (gethash session-id eureka--session-project-map))
+              (project (gethash project-root eureka--projects)))
+    project))
+
+(defun eureka--create-temp-dir (prefix)
+  "Create a temporary directory under BASEDIR.
+Returns the path of the created directory or nil if failed."
+  (let* ((temp-dir-prefix (concat "eureka-" (replace-regexp-in-string "/" "_" prefix) "-" (eureka-get-current-time) "-"))
+         (temp-dir (make-temp-file temp-dir-prefix t)))
+    (if (file-directory-p temp-dir)
+        temp-dir
+      (message "Failed to create temporary directory in %s" basedir)
+      nil)))
+
 ;; FIXME ediff
 ;; 1. filename is a new created file
 ;; 2. ediff-buffers is async, it won't block.
 ;; 3. tmpbuf name not changed for a new filename
 ;; Maybe can create new directories for files to be changed and compare directories?
-(defun eureka--project-code-edit-done-callback (text &optional on-done)
-  (when ellama-session-auto-save
-    (save-buffer))
+(defun eureka--project-code-edit-done-callback-1 (text session-id)
+  (let ((project (eureka--get-project-from-session-id session-id))
+        (actions (eureka--project-code-edit-parse-response text))
+        project-root
+        project-name
+        relative-filename
+        temp-dir temp-filename temp-filename-base bases
+        ediff-regexp)
+    (if (and project
+             actions)
+        (progn
+          (setq project-root (eureka-project-root project)
+                project-name (file-name-nondirectory (directory-file-name project-root))
+                temp-dir (eureka--create-temp-dir project-name))
+          (cl-dolist (action actions)
+            (let ((filename (eureka--file-action-filename action))
+                  (edits (eureka--file-action-edits action))
+                  oldbuf content
+                  tmpbuf tmpcont
+                  search
+                  replace)
+              (setq relative-filename (string-replace project-root "" filename)
+                    temp-filename (file-name-concat temp-dir relative-filename)
+                    temp-filename-base (file-name-nondirectory temp-filename))
+              (push temp-filename-base bases)
+              (message "relative-filename: %s" relative-filename)
+              (message "temp-filename: %s" temp-filename)
+              (eureka-with-file-open-temporarily
+                  filename t
+                  (setq oldbuf (current-buffer)
+                        content (buffer-substring-no-properties (point-min) (point-max)))
+                  (setq tmpcont content)
+                  (make-empty-file temp-filename t)
+                  (setq tmpbuf (find-file-noselect temp-filename))
+                  (cl-dolist (edit edits)
+                    (setq search (eureka--file-edit-search edit)
+                          replace (eureka--file-edit-replace edit))
+                    (cond
+                     ((and (length= search 0)
+                           (length= tmpcont 0))
+                      (setq tmpcont replace))
+                     ((length= search 0)
+                      (setq tmpcont (concat tmpcont replace)))
+                     (t
+                      (setq tmpcont (string-replace search replace tmpcont)))))
+                  (with-current-buffer tmpbuf
+                    (erase-buffer)
+                    (insert tmpcont)
+                    (save-buffer)))))
+          (setq ediff-regexp (regexp-opt bases))
+          (ediff-directories project-root temp-dir ediff-regexp))
+      (message "No project or No actions."))))
+
+(defun eureka--project-code-edit-done-callback (text session-id)
   (let ((actions (eureka--project-code-edit-parse-response text)))
     (when actions
       (require 'ediff)
@@ -387,7 +456,7 @@ When START is non-nil the search will start at that index."
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
-       :on-done #'eureka--project-code-edit-done-callback))))
+       :on-done #'eureka--project-code-edit-done-callback-1))))
 
 ;;;###autoload
 (defun eureka-project-code-explain ()
@@ -797,6 +866,12 @@ its `eureka-project'.")
 
 ;; - Retrieve outgoning calls and get files that FILENAME directly depends on.
 
+;; 5 class
+;; 6 method
+;; 12 function
+(defvar eureka-lsp-symbol-kinds '(5 6 12)
+  "Symbol kinds that are used to filter symbols when retrieving file deps.")
+
 ;; - Merge and dedup filenames
 (defun eureka--retrieve-file-deps-by-lspce (filename)
   (when (and (fboundp 'lspce-mode)
@@ -817,15 +892,11 @@ its `eureka-project'.")
               (cl-dolist (symbol response)
                 (let ((kind (gethash "kind" symbol))
                       (children (gethash "children" symbol)))
-                  ;; FIXME add a defcustom
-                  ;; 5 class
-                  ;; 6 method
-                  ;; 12 function
-                  (when (member kind '(5 6 12))
+                  (when (member kind eureka-lsp-symbol-kinds)
                     (push symbol symbols))
                   (when children
                     (cl-dolist (c children)
-                      (when (member (gethash "kind" c) '(5 6 12))
+                      (when (member (gethash "kind" c) eureka-lsp-symbol-kinds)
                         (push c symbols)))))))
             (save-excursion
               (save-restriction
@@ -879,6 +950,9 @@ its `eureka-project'.")
                (file-exists-p filename))
       (setq eureka--file-context-manually (delete filename eureka--file-context-manually)))))
 
+(defvar eureka--session-project-map (make-hash-table :test #'equal)
+  "Map session-id to project-root.")
+
 (defun eureka--project (project-root)
   (when project-root
     (let ((project (gethash project-root eureka--projects))
@@ -886,6 +960,7 @@ its `eureka-project'.")
       (unless project
         (setq session (eureka-new-session eureka-provider project-root))
         (setq project (make-eureka-project :root project-root :context nil :provider eureka-provider :session session))
+        (puthash (eureka-session-id session) project-root eureka--session-project-map)
         (puthash project-root project eureka--projects))
       project)))
 
@@ -893,12 +968,16 @@ its `eureka-project'.")
   (interactive)
   (let* ((project-root (eureka--project-root))
          project
+         old-session
          session)
     (when project-root
       (setq project (gethash project-root eureka--projects))
       (when project
+        (setq old-session (eureka-project-session project))
         (setq session (eureka-new-session eureka-provider project-root))
-        (setf (eureka-project-session project) session)))))
+        (setf (eureka-project-session project) session)
+        (remhash (eureka-session-id old-session) eureka--session-project-map)
+        (puthash (eureka-session-id session) project-root eureka--session-project-map)))))
 
 ;;;###autoload
 (defun eureka-add-project-context ()
