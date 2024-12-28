@@ -181,37 +181,6 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
     (literal "```")))
   )
 
-;; (defconst eureka--project-code-edit-pattern
-;;   (rx
-;;    ;;filename fence start
-;;    (minimal-match
-;;     (literal "```") (zero-or-more alpha) (+ (or "\n" "\r")))
-;;    ;;filename
-;;    (group (minimal-match
-;;            (one-or-more (not (any "\n" "\r")))))
-;;    (+ (or "\n" "\r"))
-;;    ;;filename fence end
-;;    (zero-or-more (seq (literal "```") (+ (or "\n" "\r"))))
-;;    (one-or-more
-;;     (seq
-;;      ;;code fence start
-;;      (minimal-match
-;;       (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
-;;      ;;SEARCH
-;;      (minimal-match
-;;       (eval eureka--code-search-label) (+ (or "\n" "\r")))
-;;      (group (minimal-match
-;;              (zero-or-more anything)))
-;;      ;; =======
-;;      (literal "=======") (+ (or "\n" "\r"))
-;;      ;;REPLACE
-;;      (group (minimal-match
-;;              (zero-or-more anything)))
-;;      (minimal-match
-;;       (eval eureka--code-replace-label) (+ (or "\n" "\r")))
-;;      ;;code fence end
-;;      (literal "```")))))
-
 (defconst eureka--project-code-edit-pattern
   (rx
    ;;fence start
@@ -355,6 +324,7 @@ Returns the path of the created directory or nil if failed."
       nil)))
 
 (defun eureka--project-code-edit-done-callback (text session-id)
+  "Use ediff to merge changes."
   (let ((project (eureka--get-project-from-session-id session-id))
         (actions (eureka--project-code-edit-parse-response text))
         project-root
@@ -365,6 +335,7 @@ Returns the path of the created directory or nil if failed."
     (if (and project
              actions)
         (progn
+          (require 'ediff)
           (setq project-root (eureka-project-root project)
                 project-name (file-name-nondirectory (directory-file-name project-root))
                 temp-dir (eureka--create-temp-dir project-name))
@@ -995,8 +966,8 @@ its `eureka-project'.")
                  (file-exists-p filename))
         (setf (eureka-project-context project) (delete filename context))))))
 
-;; TODO add more associations
 (defvar eureka--language-ids
+  "Map file extension to language id that can be used in markdown."
   '(("py" . "python")
     ("el" . "elisp")))
 
