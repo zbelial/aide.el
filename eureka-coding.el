@@ -105,16 +105,14 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 # *SEARCH/REPLACE block* Rules:
 
 Every *SEARCH/REPLACE block* must use this format:
-1. The first opening fence: ```
+1. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
 2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
-3. The first closing fence: ```
-4. The second opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
-5. The start of search block: <<<<<<< SEARCH
-6. A contiguous chunk of lines to search for in the existing source code
-7. The dividing line: =======
-8. The lines to replace into the source code
-9. The end of the replace block: >>>>>>> REPLACE
-10. The second closing fence: ```
+3. The start of search block: <<<<<<< SEARCH
+4. A contiguous chunk of lines to search for in the existing source code
+5. The dividing line: =======
+6. The lines to replace into the source code
+7. The end of the replace block: >>>>>>> REPLACE
+8. The closing fence: ```
 
 Use the *FULL* file path, as shown to you by the user.
 
@@ -183,36 +181,60 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
     (literal "```")))
   )
 
+;; (defconst eureka--project-code-edit-pattern
+;;   (rx
+;;    ;;filename fence start
+;;    (minimal-match
+;;     (literal "```") (zero-or-more alpha) (+ (or "\n" "\r")))
+;;    ;;filename
+;;    (group (minimal-match
+;;            (one-or-more (not (any "\n" "\r")))))
+;;    (+ (or "\n" "\r"))
+;;    ;;filename fence end
+;;    (zero-or-more (seq (literal "```") (+ (or "\n" "\r"))))
+;;    (one-or-more
+;;     (seq
+;;      ;;code fence start
+;;      (minimal-match
+;;       (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
+;;      ;;SEARCH
+;;      (minimal-match
+;;       (eval eureka--code-search-label) (+ (or "\n" "\r")))
+;;      (group (minimal-match
+;;              (zero-or-more anything)))
+;;      ;; =======
+;;      (literal "=======") (+ (or "\n" "\r"))
+;;      ;;REPLACE
+;;      (group (minimal-match
+;;              (zero-or-more anything)))
+;;      (minimal-match
+;;       (eval eureka--code-replace-label) (+ (or "\n" "\r")))
+;;      ;;code fence end
+;;      (literal "```")))))
+
 (defconst eureka--project-code-edit-pattern
   (rx
-   ;;filename fence start
+   ;;fence start
    (minimal-match
-    (literal "```") (zero-or-more alpha) (+ (or "\n" "\r")))
+    (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
    ;;filename
    (group (minimal-match
            (one-or-more (not (any "\n" "\r")))))
    (+ (or "\n" "\r"))
-   ;;filename fence end
-   (zero-or-more (seq (literal "```") (+ (or "\n" "\r"))))
-   (one-or-more
-    (seq
-     ;;code fence start
-     (minimal-match
-      (zero-or-more anything) (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
-     ;;SEARCH
-     (minimal-match
-      (eval eureka--code-search-label) (+ (or "\n" "\r")))
-     (group (minimal-match
-             (zero-or-more anything)))
-     ;; =======
-     (literal "=======") (+ (or "\n" "\r"))
-     ;;REPLACE
-     (group (minimal-match
-             (zero-or-more anything)))
-     (minimal-match
-      (eval eureka--code-replace-label) (+ (or "\n" "\r")))
-     ;;code fence end
-     (literal "```")))))
+   ;;SEARCH
+   (minimal-match
+    (eval eureka--code-search-label) (+ (or "\n" "\r")))
+   (group (minimal-match
+           (zero-or-more anything)))
+   ;; =======
+   (literal "=======") (+ (or "\n" "\r"))
+   ;;REPLACE
+   (group (minimal-match
+           (zero-or-more anything)))
+   (minimal-match
+    (eval eureka--code-replace-label) (+ (or "\n" "\r")))
+   ;;fence end
+   (literal "```")))
 
 ;; copied from s.el's s-match and modified
 (defun eureka--match (regexp s &optional start)
@@ -231,13 +253,13 @@ When START is non-nil the search will start at that index."
     (if (string-match regexp s start)
         (let ((match-data-list (match-data))
               result)
-          (message "match-data-list: %s" match-data-list)
           (while match-data-list
             (let* ((beg (car match-data-list))
                    (end (cadr match-data-list))
-                   (subs (if (and beg end) (list (substring s beg end) beg end) nil)))
-              (setq result (cons subs result))
-              ;; (message "result: %s" result)
+                   subs)
+              (when (and beg end)
+                (setq subs (list (substring s beg end) beg end))
+                (setq result (push subs result)))
               (setq match-data-list
                     (cddr match-data-list))))
           (nreverse result)))))
@@ -280,41 +302,41 @@ When START is non-nil the search will start at that index."
     (nreverse edits)))
 
 (defun eureka--project-code-edit-parse-response (text)
-  (let ((actions nil)
+  (let ((actions (make-hash-table :test #'equal))
         filename
-        action
+        action old-action
         match-result
         edits
-        edit-text
-        filename-end
         total-end
         start
         stop?)
-    (message "text: \n[%s]" text)
     (if (= (eureka--count-substring eureka--code-search-label text)
            (eureka--count-substring eureka--code-replace-label text))
         (progn
           (while (not stop?)
             (progn
               (setq match-result (eureka--match eureka--project-code-edit-pattern text start))
-              ;; (message "match-result: %s" match-result)
               (if (and match-result
                        (length> match-result 2))
                   (progn
                     (setq total-end (nth 2 (nth 0 match-result))
-                          filename-end (nth 2 (nth 1 match-result))
-                          filename (nth 0 (nth 1 match-result)))
-                    (setq edit-text (substring-no-properties text filename-end total-end))
-                    (setq edits (eureka--project-code-edit-parse-search-replace edit-text))
-                    (setq action nil)
+                          filename (nth 0 (nth 1 match-result))
+                          search (nth 0 (nth 2 match-result))
+                          replace (nth 0 (nth 3 match-result)))
+                    (setq edits (list (make-eureka--file-edit :search search :replace replace)))
                     (when (and filename
                                edits)
-                      (setq action (make-eureka--file-action :filename filename
-                                                             :edits edits))
-                      (push action actions))
+                      ;; merge all edits of a file
+                      (setq old-action (gethash filename actions))
+                      (if old-action
+                          (setq action (make-eureka--file-action :filename filename
+                                                                 :edits (append (eureka--file-action-edits old-action) edits)))
+                        (setq action (make-eureka--file-action :filename filename
+                                                               :edits edits)))
+                      (puthash filename action actions))
                     (setq start total-end))
                 (setq stop? t))))
-          (nreverse actions))
+          (hash-table-values actions))
       (message "Ill-formed response."))))
 
 (defun eureka--get-project-from-session-id (session-id)
@@ -332,12 +354,7 @@ Returns the path of the created directory or nil if failed."
       (message "Failed to create temporary directory in %s" basedir)
       nil)))
 
-;; FIXME ediff
-;; 1. filename is a new created file
-;; 2. ediff-buffers is async, it won't block.
-;; 3. tmpbuf name not changed for a new filename
-;; Maybe can create new directories for files to be changed and compare directories?
-(defun eureka--project-code-edit-done-callback-1 (text session-id)
+(defun eureka--project-code-edit-done-callback (text session-id)
   (let ((project (eureka--get-project-from-session-id session-id))
         (actions (eureka--project-code-edit-parse-response text))
         project-root
@@ -362,8 +379,6 @@ Returns the path of the created directory or nil if failed."
                     temp-filename (file-name-concat temp-dir relative-filename)
                     temp-filename-base (file-name-nondirectory temp-filename))
               (push temp-filename-base bases)
-              (message "relative-filename: %s" relative-filename)
-              (message "temp-filename: %s" temp-filename)
               (eureka-with-file-open-temporarily
                   filename t
                   (setq oldbuf (current-buffer)
@@ -387,43 +402,8 @@ Returns the path of the created directory or nil if failed."
                     (insert tmpcont)
                     (save-buffer)))))
           (setq ediff-regexp (regexp-opt bases))
-          (ediff-directories project-root temp-dir ediff-regexp))
+          (ediff-directories project-root temp-dir nil))
       (message "No project or No actions."))))
-
-(defun eureka--project-code-edit-done-callback (text session-id)
-  (let ((actions (eureka--project-code-edit-parse-response text)))
-    (when actions
-      (require 'ediff)
-      (cl-dolist (action actions)
-        (let ((filename (eureka--file-action-filename action))
-              (edits (eureka--file-action-edits action))
-              content
-              oldbuf
-              tmpbuf
-              tmpcont
-              search
-              replace)
-          (eureka-with-file-open-temporarily
-              filename t
-              (setq oldbuf (current-buffer)
-                    content (buffer-substring-no-properties (point-min) (point-max)))
-              (setq tmpcont content)
-              (setq tmpbuf (generate-new-buffer " *temp* " t))
-              (cl-dolist (edit edits)
-                (setq search (eureka--file-edit-search edit)
-                      replace (eureka--file-edit-replace edit))
-                (cond
-                 ((and (length= search 0)
-                       (length= tmpcont 0))
-                  (setq tmpcont replace))
-                 ((length= search 0)
-                  (setq tmpcont (concat tmpcont replace)))
-                 (t
-                  (setq tmpcont (string-replace search replace tmpcont)))))
-              (with-current-buffer tmpbuf
-                (erase-buffer)
-                (insert tmpcont))
-              (ediff-buffers oldbuf tmpbuf)))))))
 
 ;;;###autoload
 (defun eureka-project-code-edit (task)
@@ -456,7 +436,7 @@ Returns the path of the created directory or nil if failed."
        :session session
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
-       :on-done #'eureka--project-code-edit-done-callback-1))))
+       :on-done #'eureka--project-code-edit-done-callback))))
 
 ;;;###autoload
 (defun eureka-project-code-explain ()
