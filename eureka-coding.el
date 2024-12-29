@@ -374,7 +374,7 @@ Returns the path of the created directory or nil if failed."
                     (erase-buffer)
                     (insert tmpcont)
                     (save-buffer)))))
-          (setq ediff-regexp (regexp-opt bases))
+          ;; (setq ediff-regexp (regexp-opt bases))
           (ediff-directories project-root temp-dir nil))
       (message "No project or No actions."))))
 
@@ -969,9 +969,9 @@ its `eureka-project'.")
         (setf (eureka-project-context project) (delete filename context))))))
 
 (defvar eureka--language-ids
-  "Map file extension to language id that can be used in markdown."
   '(("py" . "python")
-    ("el" . "elisp")))
+    ("el" . "elisp"))
+  "Map file extension to language id that can be used in markdown.")
 
 (defun eureka--file-language-id (filename)
   "Get language id of FILENAME."

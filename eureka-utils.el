@@ -70,7 +70,7 @@
 (defun eureka--project-root ()
   (when-let* ((proj (project-current))
               (root (project-root proj)))
-    root))
+    (file-truename root)))
 
 (defmacro eureka-with-file-open-temporarily (file close-after-body &rest body)
   "Load FILE and then evaluate BODY with FILE's buffer the current buffer.
