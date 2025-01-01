@@ -481,6 +481,36 @@ Returns the path of the created directory or nil if failed."
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'eureka--project-code-edit-done-callback))))
 
+;;;###autoload
+(defun eureka-project-ask (task)
+  "Ask llm."
+  (interactive "sWhat do you wanna ask: ")
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
+         (context (eureka--file-context))
+         session
+         session-file
+         buffer
+         text)
+    (when project
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
+      ;; if buffer has been destroyed, recreate it
+      (unless (buffer-live-p buffer)
+        (setq session-file (eureka-session-file session))
+        (setq buffer (find-file-noselect session-file))
+        (setf (eureka-session-buffer session) buffer))
+      (display-buffer buffer)
+      (eureka-instant (format
+                       eureka-project-code-prompt-template
+                       context
+                       eureka-project-code-context-format
+                       task
+                       "")
+                      :session session
+                      :buffer buffer
+                      :provider eureka-provider))))
+
 ;;;; File skeleton
 
 (cl-defstruct eureka-file-skeleton
@@ -488,7 +518,54 @@ Returns the path of the created directory or nil if failed."
   (skeleton)
   (timestamp))
 
-;; TODO explain queries
+
+;; NOTE: We may change the way to capture the file skeleton.
+
+;; For now, every query can capture 4 node at the most
+;; @context                   *MUST*
+;;         the whole code block, e.g. a class or a function
+;; @context.body              *OPTIONAL*
+;;         the body of the @context, e.g. java class body between "{" and "}"
+;; @context.surrouding.start  *OPTIONAL*
+;;         e.g. the "{" of a java class body
+;; @context.surrouding.end    *OPTIONAL*
+;;         e.g. the "}" of a java class body
+;; For example, if we have a java file with a class like the following
+
+;; class C {
+;;         ^     // 1
+;;     C1 c1;
+;;     void f1 (int a) {
+;;         int v1 = 10;
+;;         int v2 = 20;
+;;     }
+;; }
+;; ^   // 2
+
+;; @context should capture the whole class C, and @context.body should capture
+;; class C's body from 1 to 2, and the content between @context's start
+;; and @context.body's start is what we're interested in and should be part
+;; of the skeleton of the file.
+;; @context.surrouding.start captures "{" at 1, and @context.surrouding.end
+;; captures "}" at 2. We capture these two things because we want to make
+;; the skeleton more natural.
+
+;; These four captures have the same meaning for function f1.
+
+;; For class property c1, we only need a @context to capture it. No @context.body,
+;; @context.surroungding.start or @context.surroungding.end.
+
+;; So the file skeleton for this file looks like the following:
+
+;; class C {
+;;     C1 c1;
+;;     void f1 (int a) {
+;;     }
+;; }
+
+
+;; For a python class, we can consider ":" after the class name as surrounding start,
+;; but there is no surrounding end, so no need to use @context.surrounding.end.
 (setq eureka--treesit-language-queries
       '((python . (("class_definition" (class_definition ":" @context.body @context.surrounding.start body: (_)) @context)
                    ("function_definition" (function_definition ":" @context.body @context.surrounding.start body: (_)) @context)))
@@ -547,17 +624,22 @@ Return nil if no treesitter support for FILENAME."
       (progn
         (setq skeleton (eureka--retrieve-file-skeleton filename))
         (setq file-skeleton (make-eureka-file-skeleton :filename filename
-                                                      :skeleton skeleton
-                                                      :timestamp (eureka--current-timestamp)))
+                                                       :skeleton skeleton
+                                                       :timestamp (eureka--current-timestamp)))
         (cache-put filename file-skeleton eureka--file-skeletons filename)))
     file-skeleton))
 
 
-(defvar eureka-treesit-suffix-language-map (make-hash-table :test #'equal)
-  "Use file name suffix to determine language.")
+(defvar eureka-treesit-suffix-language-map
+  '(("py" . "python")
+    ("el" . "elisp")
+    ("js" . "javascript")
+    ("ts" . "typescript"))
+  "Map file extension to language that can be used to determine tree sitter parser.")
 
-(defvar eureka-treesit-major-mode-language-map (make-hash-table :test #'equal)
-  "Use buffer's major mode (in string form) to determine language.")
+(defvar eureka-treesit-major-mode-language-map nil
+  "Use buffer's major mode (in string form) to determine language that can
+be used to determine tree sitter parser.")
 
 (defun eureka--buffer-treesit-language (&optional buf)
   "Get the language of BUF, the default of which is current buffer."
@@ -570,17 +652,11 @@ Return nil if no treesitter support for FILENAME."
       (setq mm (symbol-name major-mode))
       (when buffer-file-name
         (setq suffix (file-name-extension buffer-file-name)))
-      (setq language (or (gethash suffix eureka-treesit-suffix-language-map)
-                         (gethash mm eureka-treesit-major-mode-language-map)))
+      (setq language (or (assoc-default suffix eureka-treesit-suffix-language-map)
+                         (assoc-default mm eureka-treesit-major-mode-language-map)))
       (unless language
         (setq language
               (cond
-               ((member suffix '("js"))
-                'javascript)
-               ((member suffix '("ts"))
-                'typescript)
-               ((member suffix '("el"))
-                'elisp)
                ((string-suffix-p "-ts-mode" mm)
                 (intern (string-remove-suffix "-ts-mode" mm)))
                (t
@@ -907,6 +983,8 @@ its `eureka-project'.")
   "Map session-id to project-root.")
 
 (defun eureka--project (project-root)
+  "Get project with root PROJECT-ROOT from cache. Create it
+if not existing."
   (when project-root
     (let ((project (gethash project-root eureka--projects))
           session)
@@ -917,7 +995,9 @@ its `eureka-project'.")
         (puthash project-root project eureka--projects))
       project)))
 
+;;;###autoload
 (defun eureka-project-refresh-session ()
+  "Recreate session for current project."
   (interactive)
   (let* ((project-root (eureka--project-root))
          project
@@ -970,7 +1050,9 @@ its `eureka-project'.")
 
 (defvar eureka--language-ids
   '(("py" . "python")
-    ("el" . "elisp"))
+    ("el" . "elisp")
+    ("js" . "javascript")
+    ("ts" . "typescript"))
   "Map file extension to language id that can be used in markdown.")
 
 (defun eureka--file-language-id (filename)

@@ -368,7 +368,7 @@ failure (with BUFFER current) and session-id.
 		       (eureka-session-buffer session))
 		     (get-buffer-create (eureka-generate-temp-name (llm-name provider)))))
 	 (point (or (plist-get args :point)
-		    (with-current-buffer buffer (point))))
+		    (with-current-buffer buffer (point-max))))
 	 (filter (or (plist-get args :filter) #'identity))
 	 (errcb (or (plist-get args :on-error)
 		    (lambda (msg)
@@ -455,13 +455,17 @@ ARGS contains keys for fine control.
   (let* ((session (plist-get args :session))
          (provider (or (plist-get args :provider)
 		       eureka-provider))
-	 (buffer (get-buffer-create (eureka-generate-temp-name (llm-name provider)))))
+	 (buffer (get-buffer-create (eureka-generate-temp-name (llm-name provider))))
+         (point (with-current-buffer buffer
+                  (goto-char (point-max))
+                  (point))))
     (display-buffer buffer (when eureka-instant-display-action-function
 			     `((ignore . (,eureka-instant-display-action-function)))))
     (eureka-stream prompt
                    :session session
 		   :buffer buffer
-		   :provider provider)))
+		   :provider provider
+                   :point point)))
 
 (provide 'eureka-core)
 
