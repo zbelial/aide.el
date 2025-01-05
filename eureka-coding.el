@@ -513,11 +513,10 @@ Returns the path of the created directory or nil if failed."
 
 ;;;; File skeleton
 
-(cl-defstruct eureka-file-skeleton
+(cl-defstruct eureka-file-content
   (filename)
-  (skeleton)
+  (content)
   (timestamp))
-
 
 ;; NOTE: We may change the way to capture the file skeleton.
 
@@ -599,21 +598,21 @@ Returns the path of the created directory or nil if failed."
                (file-exists-p filename))
       (time-convert (file-attribute-modification-time (file-attributes filename)) 'integer))))
 
-(defun eureka--file-skeleton-init-fn (data)
+(defun eureka--file-cache-init-fn (data)
   "DATA is a filename."
   (eureka--file-modified-timestamp data))
 
-(defun eureka--file-skeleton-test-fn (info data)
-  "INFO is what `eureka--file-skeleton-init-fn' returns.
+(defun eureka--file-cache-test-fn (info data)
+  "INFO is what `eureka--file-cache-init-fn' returns.
 DATA is a filename."
   (> (eureka--file-modified-timestamp data) info))
 
-(defvar eureka--file-skeletons (cache-make-cache #'eureka--file-skeleton-init-fn
-                                                #'eureka--file-skeleton-test-fn
-                                                #'ignore
-                                                :test #'equal)
-  "Buffers' skeleton.
-Key is file name, value is of type `eureka-file-skeleton'.")
+(defvar eureka--file-skeletons (cache-make-cache #'eureka--file-cache-init-fn
+                                                 #'eureka--file-cache-test-fn
+                                                 #'ignore
+                                                 :test #'equal)
+  "File's skeleton.
+Key is file name, value is of type `eureka-file-content'.")
 
 (defun eureka--file-skeleton (filename)
   "Get FILENAME's skeleton.
@@ -623,12 +622,33 @@ Return nil if no treesitter support for FILENAME."
     (unless file-skeleton
       (progn
         (setq skeleton (eureka--retrieve-file-skeleton filename))
-        (setq file-skeleton (make-eureka-file-skeleton :filename filename
-                                                       :skeleton skeleton
-                                                       :timestamp (eureka--current-timestamp)))
-        (cache-put filename file-skeleton eureka--file-skeletons filename)))
+        (when skeleton
+          (setq file-skeleton (make-eureka-file-content :filename filename
+                                                        :content skeleton
+                                                        :timestamp (eureka--current-timestamp)))
+          (cache-put filename file-skeleton eureka--file-skeletons filename))))
     file-skeleton))
 
+(defvar eureka--file-contents (cache-make-cache #'eureka--file-cache-init-fn
+                                                #'eureka--file-cache-test-fn
+                                                #'ignore
+                                                :test #'equal)
+  "File's content.
+Key is file name, value is of type `eureka-file-content'.")
+
+(defun eureka--file-full-content (filename)
+  "Get FILENAME's content."
+  (let ((file-content (cache-get filename eureka--file-contents filename))
+        content)
+    (unless file-content
+      (progn
+        (setq content (eureka--retrieve-file-content filename))
+        (when content
+          (setq file-content (make-eureka-file-content :filename filename
+                                                       :content content
+                                                       :timestamp (eureka--current-timestamp)))
+          (cache-put filename file-content eureka--file-contents filename))))
+    file-content))
 
 (defvar eureka-treesit-suffix-language-map
   '(("py" . "python")
@@ -785,6 +805,11 @@ The car of the pair is context, and the cdr is context.body."
       filename t
       (eureka--retrieve-buffer-skeleton)))
 
+(defun eureka--retrieve-file-content (filename)
+  (eureka-with-file-open-temporarily
+      filename t
+      (buffer-substring-no-properties (point-min) (point-max))))
+
 ;;;; Repomap
 
 (defcustom eureka-file-deps-function nil
@@ -794,6 +819,12 @@ file's name, and returns filenames as a list."
   :group 'eureka
   :type 'function)
 
+(defcustom eureka-file-content-type nil
+  "When creating file context, use file skeleton (see `eureka--file-skeleton')
+or file full content (see `eureka--file-full-content').
+It can be 'full or 'skeleton. nil means 'skeleton, t means 'full."
+  :group 'eureka
+  :type 'boolean)
 
 ;; There are four different kinds of context in eureka.
 ;; Here context means file skeleton or file content (in
@@ -833,19 +864,10 @@ SESSION is the `eureka-session' for this project."
   (deps)
   (timestamp))
 
-(defun eureka--file-deps-init-fn (data)
-  "DATA is a filename."
-  (eureka--file-modified-timestamp data))
-
-(defun eureka--file-deps-test-fn (info data)
-  "INFO is what `eureka--file-deps-init-fn' returns.
-DATA is a filename."
-  (> (eureka--file-modified-timestamp data) info))
-
-(defvar eureka--file-deps (cache-make-cache #'eureka--file-deps-init-fn
-                                           #'eureka--file-deps-test-fn
-                                           #'ignore
-                                           :test #'equal)
+(defvar eureka--file-deps (cache-make-cache #'eureka--file-cache-init-fn
+                                            #'eureka--file-cache-test-fn
+                                            #'ignore
+                                            :test #'equal)
   "Buffers' deps.
 Key is file name, value is of type `eureka-file-deps'.")
 
@@ -1077,13 +1099,22 @@ if not existing."
             "```"
             "\n\n")))
 
+(defun eureka--get-file-content (filename)
+  (cond
+   ((or (null eureka-file-content-type)
+        (eq eureka-file-content-type 'skeleton))
+    (eureka--file-skeleton filename))
+   ((or (eq eureka-file-content-type t)
+        (eq eureka-file-content-type 'full))
+    (eureka--file-full-content filename))))
+
 (defun eureka--file-context (&optional automatic-p manual-p project-p)
   "Calculate context of current buffer file."
   (with-current-buffer (current-buffer)
     (let* ((filename (buffer-file-name))
            (project-root (eureka--project-root))
            (project (eureka--project project-root))
-           file-skeleton
+           file-content
            deps
            context)
       (when (and filename
@@ -1102,12 +1133,12 @@ if not existing."
                        filename
                        (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
-          (setq file-skeleton (eureka--file-skeleton dep))
-          (when file-skeleton
+          (setq file-content (eureka--get-file-content dep))
+          (when file-content
             (setq context (concat context
                                   (eureka--format-file-context
-                                   (eureka-file-skeleton-filename file-skeleton)
-                                   (eureka-file-skeleton-skeleton file-skeleton)))))))
+                                   (eureka-file-content-filename file-content)
+                                   (eureka-file-content-content file-content)))))))
       context)))
 
 (defun eureka--project-context ()
@@ -1116,7 +1147,7 @@ if not existing."
     (let* ((filename (buffer-file-name))
            (project-root (eureka--project-root))
            (project (eureka--project project-root))
-           file-skeleton
+           file-content
            deps
            context)
       (when (and filename
@@ -1126,12 +1157,12 @@ if not existing."
                        filename
                        (buffer-substring-no-properties (point-min) (point-max))))
         (cl-dolist (dep deps)
-          (setq file-skeleton (eureka--file-skeleton dep))
-          (when file-skeleton
+          (setq file-content (eureka--get-file-content dep))
+          (when file-content
             (setq context (concat context
                                   (eureka--format-file-context
-                                   (eureka-file-skeleton-filename file-skeleton)
-                                   (eureka-file-skeleton-skeleton file-skeleton)))))))
+                                   (eureka-file-content-filename file-content)
+                                   (eureka-file-content-content file-content)))))))
       context)))
 
 ;;;; Helping functions
