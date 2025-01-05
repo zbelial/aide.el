@@ -827,25 +827,23 @@ It can be 'full or 'skeleton. nil means 'skeleton, t means 'full."
   :type 'boolean)
 
 ;; There are four different kinds of context in eureka.
-;; Here context means file skeleton or file content (in
+;; Here context means file skeleton or full file content (in
 ;; this case, it's because file skeleton cannot be got).
 
 ;; The first kind is for projects, and is added manually.
-;; This kind is stored in `eureka-project''s session.
+;; This kind is stored in `eureka-project''s context.
 
-;; The second kind is for files and is added automatically,
-;; this kind of context is files retrieved by calling
+;; The second kind is for files and is added automatically.
+;; This kind of context is files retrieved by calling
 ;; `eureka-file-deps-function'.
-;; This kind is stored in `eureka--file-context-automatically'.
 
 ;; The third kind is also for files and is added manually.
 ;; This kind is stored in `eureka--file-context-manually'.
 
-;; The forth kind is the current file, which is stored in
-;; `eureka--file-skeleton'.
+;; The forth kind is the current file's full content.
 
 (cl-defstruct eureka-project
-  "A structure that represents eureka project.
+  "A structure that represents a eureka project.
 
 ROOT is the project root, string.
 
@@ -871,10 +869,6 @@ SESSION is the `eureka-session' for this project."
   "Buffers' deps.
 Key is file name, value is of type `eureka-file-deps'.")
 
-
-(defvar-local eureka--file-context-automatically nil
-  "File context which is calculated automatically.
-This is a list of filename.")
 
 (defvar-local eureka--file-context-manually nil
   "File context which is added manually.
