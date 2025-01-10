@@ -1037,7 +1037,7 @@ if not existing."
         context
         project
         session)
-    (setq filename (read-file-name "Add a file to local context: "))
+    (setq filename (read-file-name "Add a file to project context: "))
     (when (and filename
                project-root
                (file-exists-p filename))
@@ -1063,6 +1063,13 @@ if not existing."
       (when (and filename
                  (file-exists-p filename))
         (setf (eureka-project-context project) (delete filename context))))))
+
+;;;###autoload
+(defun eureka-list-files-in-file-context ()
+  "List all files in current file's context.
+The result will include project's context."
+  (interactive)
+  )
 
 (defvar eureka--language-ids
   '(("py" . "python")
@@ -1101,6 +1108,14 @@ if not existing."
    ((or (eq eureka-file-content-type t)
         (eq eureka-file-content-type 'full))
     (eureka--file-full-content filename))))
+
+;; internal use
+;; files in a file's or project's context
+(cl-defstruct eureka--context-files
+  automatic
+  manual
+  project
+  )
 
 (defun eureka--file-context (&optional automatic-p manual-p project-p)
   "Calculate context of current buffer file."
