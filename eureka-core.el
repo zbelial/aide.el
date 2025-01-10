@@ -434,7 +434,8 @@ failure (with BUFFER current) and session-id.
                                     (funcall donecb text session-id)
 				    (with-current-buffer buffer
 				      (accept-change-group eureka--change-group)
-                                      (when ellama-session-auto-save
+                                      (when (and ellama-session-auto-save
+                                                 (buffer-file-name buffer))
                                         (save-buffer))
 				      (setq eureka--current-request nil)
 				      (eureka-request-mode -1)))
