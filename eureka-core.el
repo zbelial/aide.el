@@ -455,8 +455,12 @@ ARGS contains keys for fine control.
 :provider PROVIDER -- PROVIDER is an llm provider for generation."
   (let* ((session (plist-get args :session))
          (provider (or (plist-get args :provider)
+                       (when session
+                         (eureka-session-provider session))
 		       eureka-provider))
-	 (buffer (get-buffer-create (eureka-generate-temp-name (llm-name provider))))
+	 (buffer (or (when session
+                       (eureka-session-buffer session))
+                     (get-buffer-create (eureka-generate-temp-name (llm-name provider)))))
          (point (with-current-buffer buffer
                   (goto-char (point-max))
                   (point))))

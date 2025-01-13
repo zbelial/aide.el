@@ -415,33 +415,67 @@ Returns the path of the created directory or nil if failed."
 (defun eureka-project-code-explain ()
   "Explain code in selected region or current buffer."
   (interactive)
-  (let ((text (if (region-active-p)
-		  (buffer-substring-no-properties (region-beginning) (region-end))
-		(buffer-substring-no-properties (point-min) (point-max))))
-        (context (eureka--file-context nil nil nil)))
-    (eureka-instant (format
-                    eureka-project-code-prompt-template
-                    context
-                    eureka-project-code-context-format
-                    (format eureka-project-code-explain-instruction-template text)
-                    "")
-                   :provider eureka-provider)))
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
+         context
+         session
+         session-file
+         buffer
+         text)
+    (when project
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
+      ;; if buffer has been destroyed, recreate it
+      (unless (buffer-live-p buffer)
+        (setq session-file (eureka-session-file session))
+        (setq buffer (find-file-noselect session-file))
+        (setf (eureka-session-buffer session) buffer))
+      (setq text (if (region-active-p)
+		     (buffer-substring-no-properties (region-beginning) (region-end))
+	           (buffer-substring-no-properties (point-min) (point-max))))
+      (setq context (eureka--file-context nil nil nil))
+      (eureka-instant (format
+                       eureka-project-code-prompt-template
+                       context
+                       eureka-project-code-context-format
+                       (format eureka-project-code-explain-instruction-template text)
+                       "")
+                      :session session
+                      :buffer buffer
+                      :provider eureka-provider))))
 
 ;;;###autoload
 (defun eureka-project-code-review ()
   "Review code in selected region or current buffer."
   (interactive)
-  (let ((text (if (region-active-p)
-		  (buffer-substring-no-properties (region-beginning) (region-end))
-		(buffer-substring-no-properties (point-min) (point-max))))
-        (context (eureka--file-context nil nil nil)))
-    (eureka-instant (format
-                    eureka-project-code-prompt-template
-                    context
-                    eureka-project-code-context-format
-                    (format eureka-project-code-review-instruction-template text)
-                    "")
-                   :provider eureka-provider)))
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
+         context
+         session
+         session-file
+         buffer
+         text)
+    (when project
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
+      ;; if buffer has been destroyed, recreate it
+      (unless (buffer-live-p buffer)
+        (setq session-file (eureka-session-file session))
+        (setq buffer (find-file-noselect session-file))
+        (setf (eureka-session-buffer session) buffer))
+      (setq text (if (region-active-p)
+		     (buffer-substring-no-properties (region-beginning) (region-end))
+	           (buffer-substring-no-properties (point-min) (point-max))))
+      (setq context (eureka--file-context nil nil nil))
+      (eureka-instant (format
+                       eureka-project-code-prompt-template
+                       context
+                       eureka-project-code-context-format
+                       (format eureka-project-code-review-instruction-template text)
+                       "")
+                      :session session
+                      :buffer buffer
+                      :provider eureka-provider))))
 
 ;;;###autoload
 (defun eureka-project-code-improve ()
