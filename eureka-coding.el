@@ -43,27 +43,19 @@
   :type 'string)
 
 ;; 4 placeholders: context, context format, user instrument and suffix.
-(defcustom eureka-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s.\n%s"
-  "Prompt template for all project code task."
-  :group 'eureka
-  :type 'string)
+(defconst eureka-project-code-prompt-template "Context:\n%s\n%s\nBased on the above context, act as an expert software developer, %s.\n%s"
+  "Prompt template for all project code task.")
 
-(defcustom eureka-project-code-review-instruction-template "review the following code and make concise suggestions: \n```%s\n```"
-  "Prompt template for `eureka-project-code-review'."
-  :group 'eureka
-  :type 'string)
+(defconst eureka-project-code-review-instruction-template "review the following code and make concise suggestions: \n```%s\n```"
+  "Prompt template for `eureka-project-code-review'.")
 
-(defcustom eureka-project-code-improve-instruction-template "enhance the following code: \n```\n%s\n```"
-  "Prompt template for `eureka-project-code-improve'."
-  :group 'eureka
-  :type 'string)
+(defconst eureka-project-code-improve-instruction-template "enhance the following code: \n```\n%s\n```"
+  "Prompt template for `eureka-project-code-improve'.")
 
-(defcustom eureka-project-code-explain-instruction-template "explain the following code in a detailed way: \n```\n%s\n```"
-  "Prompt template for `eureka-project-code-explain'."
-  :group 'eureka
-  :type 'string)
+(defconst eureka-project-code-explain-instruction-template "explain the following code in a detailed way: \n```\n%s\n```"
+  "Prompt template for `eureka-project-code-explain'.")
 
-(defcustom eureka-project-code-context-format "Context at the begining contains one or more *CONTEXT block*,
+(defconst eureka-project-code-context-format "Context at the begining contains one or more *CONTEXT block*,
 each block represents a file and its content.
 
 # *CONTEXT block* Format:
@@ -77,12 +69,10 @@ Every *CONTEXT block* follows this format:
 6. The closing fence: ```
 
 "
-  "Context format."
-  :group 'eureka
-  :type 'string)
+  "Context format.")
 
 ;; 1 placeholder(s): language
-(defcustom eureka-project-code-edit-suffix-template "Always use best practices when coding.
+(defconst eureka-project-code-edit-suffix-template "Always use best practices when coding.
 Respect and use existing conventions, libraries, etc that are already present in the code base.
 
 You NEVER leave comments describing code without implementing it!
@@ -145,9 +135,10 @@ You always COMPLETELY IMPLEMENT the needed code!
 ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 
 "
-  "Prompt template for `eureka-project-code-edit'."
-  :group 'eureka
-  :type 'string)
+  "Prompt template for `eureka-project-code-edit'.")
+
+(defconst eureka-project-code-implement-template ""
+  "Prompt template for `eureka-project-code-implement'.")
 
 (defcustom eureka-ediff-directory (file-truename
 				   (file-name-concat
@@ -485,7 +476,6 @@ Returns the path of the created directory or nil if failed."
          (project (eureka--project project-root))
          (context (eureka--file-context t t t))
          session
-         session-file
          buffer
          (beg (if (region-active-p)
 		  (region-beginning)
@@ -498,8 +488,7 @@ Returns the path of the created directory or nil if failed."
       (setq session (eureka-project-session project))
       (setq buffer (eureka-session-buffer session))
       (unless (buffer-live-p buffer)
-        (setq session-file (eureka-session-file session))
-        (setq buffer (find-file-noselect session-file))
+        (setq buffer (find-file-noselect (eureka-session-file session)))
         (setf (eureka-session-buffer session) buffer))
       (display-buffer buffer)
       (eureka-stream
@@ -514,6 +503,42 @@ Returns the path of the created directory or nil if failed."
        :buffer buffer
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'eureka--project-code-edit-done-callback))))
+
+;;;###autoload
+(defun eureka-project-code-implement ()
+  "Implement what coments before the cursor say."
+  (interactive)
+  (let* ((project-root (eureka--project-root))
+         (project (eureka--project project-root))
+         (context (eureka--file-context))
+         session
+         buffer
+	 comments)
+    (when project
+      (setq comments "TODO")
+      (setq session (eureka-project-session project))
+      (setq buffer (eureka-session-buffer session))
+      (unless (buffer-live-p buffer)
+        (setq buffer (find-file-noselect (eureka-session-file session)))
+        (setf (eureka-session-buffer session) buffer))
+      (display-buffer buffer)
+      (eureka-stream
+       (format
+        eureka-project-code-prompt-template
+        context
+        eureka-project-code-context-format
+        comments
+        (format eureka-project-code-edit-suffix-template eureka-coding-language))
+       :provider eureka-provider
+       :session session
+       :buffer buffer
+       :point (with-current-buffer buffer (point))
+       :on-done #'eureka--project-code-edit-done-callback))))
+
+;;;###autoload
+(defun eureka-project-code-complete ()
+  "Complete code according the surrounding code."
+  )
 
 ;;;###autoload
 (defun eureka-project-ask (task)

@@ -442,7 +442,8 @@ failure (with BUFFER current) and session-id.
 	                          (lambda (_ msg)
 		                    (with-current-buffer buffer
 		                      (cancel-change-group eureka--change-group)
-		                      (spinner-stop)
+                                      (with-current-buffer invoke-buffer
+		                        (spinner-stop))
 		                      (funcall errcb msg)
 		                      (setq eureka--current-request nil)
 		                      (eureka-request-mode -1)))))))))
