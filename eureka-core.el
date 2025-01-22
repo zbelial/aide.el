@@ -431,7 +431,7 @@ failure (with BUFFER current) and session-id.
                                       (spinner-stop))
                                     (when session
                                       (setf (eureka-session-response session) text))
-                                    (funcall donecb text session-id)
+                                    (funcall donecb text session-id invoke-buffer)
 				    (with-current-buffer buffer
 				      (accept-change-group eureka--change-group)
                                       (when (and ellama-session-auto-save

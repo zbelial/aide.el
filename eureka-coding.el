@@ -137,7 +137,33 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 "
   "Prompt template for `eureka-project-code-edit'.")
 
-(defconst eureka-project-code-implement-template ""
+;; 4 placeholders: task, code represented by CODEBEFORECURSOR, CURSORPOSITION and CODEAFTERCURSOR, .
+(defconst eureka-project-code-implement-template "implement what the following task says. Task: %s \n.
+User's current code is enclosed in three markers: <CURSORPOSITION>, <CODEBEFORECURSOR> and <CODEAFTERCURSOR>.
+
+What each marker means is explained below:
+<CODEBEFORECURSOR>: code before the cursor.
+<CURSORPOSITION>: cursor position, presented in format LINE:COLUMN.
+<CODEAFTERCURSOR>: code after the cursor.
+
+User's current code format:
+1. The opening fence and code language, eg: ```python, here python will be replaced with the code language of user's file.
+2. A marker: <CODEBEFORECURSOR>
+3. A contiguous chunk of codes before the cursor
+4. A marker: <CURSORPOSITION>
+5. cursor position presented in format LINE:COLUMN
+6. A marker: <CODEAFTERCURSOR>
+7. A contiguous chunk of codes after the cursor
+8. The closing fence: ```
+
+Once you understand the request, you MUST:
+1. Implement exactly what the TASK says in current file's programing language.
+2. Respond with JUST code that can be inserted directly after CURSORPOSITION.
+3. Make sure the code returned follow the existing indentation rules.
+4. You can use methods or functions in context provided in prompt if appropriate.
+
+Below is user's current code:
+%s"
   "Prompt template for `eureka-project-code-implement'.")
 
 (defcustom eureka-ediff-directory (file-truename
@@ -198,18 +224,29 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
    ;;fence end
    (literal "```")))
 
+(defconst eureka--project-code-implement-pattern
+  (rx
+   ;;fence start
+   (minimal-match
+    (literal "```") (one-or-more alpha) (+ (or "\n" "\r")))
+   ;;code
+   (group (minimal-match
+           (zero-or-more anything)))
+   ;;fence end
+   (literal "```")))
+
 ;; copied from s.el's s-match and modified
 (defun eureka--match (regexp s &optional start)
   "When the given expression matches the string, this function returns a list
-of the whole matching string and a string for each matched subexpressions.
-Subexpressions that didn't match are represented by nil elements
-in the list, except that non-matching subexpressions at the end
-of REGEXP might not appear at all in the list.  That is, the
-returned list can be shorter than the number of subexpressions in
-REGEXP plus one.  If REGEXP did not match the returned value is
-an empty list (nil).
+  of the whole matching string and a string for each matched subexpressions.
+  Subexpressions that didn't match are represented by nil elements
+  in the list, except that non-matching subexpressions at the end
+  of REGEXP might not appear at all in the list.  That is, the
+  returned list can be shorter than the number of subexpressions in
+  REGEXP plus one.  If REGEXP did not match the returned value is
+  an empty list (nil).
 
-When START is non-nil the search will start at that index."
+  When START is non-nil the search will start at that index."
   (declare (side-effect-free t))
   (save-match-data
     (if (string-match regexp s start)
@@ -301,6 +338,16 @@ When START is non-nil the search will start at that index."
           (hash-table-values actions))
       (message "Ill-formed response."))))
 
+(defun eureka--project-code-implement-parse-response (text)
+  (let (code
+        start
+        match-result)
+    (setq match-result (eureka--match eureka--project-code-implement-pattern text start))
+    (when (and match-result
+               (length= match-result 2))
+      (setq code (nth 0 (nth 1 match-result))))
+    code))
+
 (defun eureka--get-project-from-session-id (session-id)
   (when-let* ((project-root (gethash session-id eureka--session-project-map))
               (project (gethash project-root eureka--projects)))
@@ -308,7 +355,7 @@ When START is non-nil the search will start at that index."
 
 (defun eureka--create-temp-dir (prefix)
   "Create a temporary directory under BASEDIR.
-Returns the path of the created directory or nil if failed."
+  Returns the path of the created directory or nil if failed."
   (let* ((temp-dir-prefix (concat "eureka-" (replace-regexp-in-string "/" "_" prefix) "-" (eureka-get-current-time) "-"))
          (temp-dir (make-temp-file temp-dir-prefix t)))
     (if (file-directory-p temp-dir)
@@ -316,15 +363,14 @@ Returns the path of the created directory or nil if failed."
       (message "Failed to create temporary directory in %s" basedir)
       nil)))
 
-(defun eureka--project-code-edit-done-callback (text session-id)
+(defun eureka--project-code-edit-done-callback (text session-id _)
   "Use ediff to merge changes."
   (let ((project (eureka--get-project-from-session-id session-id))
         (actions (eureka--project-code-edit-parse-response text))
         project-root
         project-name
         relative-filename
-        temp-dir temp-filename temp-filename-base bases
-        ediff-regexp)
+        temp-dir temp-filename temp-filename-base bases)
     (if (and project
              actions)
         (progn
@@ -365,7 +411,6 @@ Returns the path of the created directory or nil if failed."
                     (erase-buffer)
                     (insert tmpcont)
                     (save-buffer)))))
-          ;; (setq ediff-regexp (regexp-opt bases))
           (ediff-directories project-root temp-dir nil))
       (message "No project or No actions."))))
 
@@ -504,6 +549,92 @@ Returns the path of the created directory or nil if failed."
        :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'eureka--project-code-edit-done-callback))))
 
+(defun eureka--is-comment-p ()
+  (or (nth 4 (syntax-ppss))
+      (and (< (point) (point-max))
+           (progn
+             (forward-char)
+             (nth 4 (syntax-ppss))))))
+
+;; comment
+(defun eureka--current-comments ()
+  "Get comment surrouding or before cursor.
+Return comment start, comment end and the comment string, or nil.
+NOTE: Only support single line comment ATM."
+  (let ((comment-p nil)
+        comment-start
+        comment-end
+        comment-range)
+    (save-excursion
+      (cond
+       ((eureka--is-comment-p)
+        (comment-beginning)
+        (setq comment-p t
+              comment-start (point)))
+       (t
+        (when (forward-comment -1)
+          (forward-char)
+          (comment-beginning)
+          (setq comment-p t
+                comment-start (point)))))
+      (when comment-p
+        (setq comment-start (point))
+        (setq comment-end (min (1+ (pos-eol)) (point-max)))
+        (setq comment-range (list comment-start comment-end
+                                  (buffer-substring-no-properties comment-start comment-end)))))
+    comment-range))
+
+(defun eureka--context-for-implement ()
+  (let (code-before-cursor
+        desired-cursor-pos
+        code-after-cursor
+        comment-start
+        comment-end
+        (filename (buffer-file-name))
+        (comments (eureka--current-comments)))
+    (when (and filename
+               comments)
+      (setq language-id (eureka--file-language-id filename))
+      (setq comment-start (nth 0 comments)
+            comment-end (nth 1 comments))
+      (if (> (point) comment-end)
+          (setq desired-cursor-pos (point))
+        (setq desired-cursor-pos comment-end))
+      (list desired-cursor-pos
+            (concat
+             "```" language-id "\n"
+             "<CODEBEFORECURSOR>:\n"
+             (buffer-substring-no-properties (point-min)
+                                             desired-cursor-pos)
+             "\n"
+             "<CURSORPOSITION>:\n"
+             (format "%d:%d\n"
+                     (1+ (line-number-at-pos desired-cursor-pos t))
+                     (save-excursion
+                       (goto-char desired-cursor-pos)
+                       (- (point) (point-at-bol))))
+             "\n"
+             "<CODEAFTERCURSOR>:\n"
+             (buffer-substring-no-properties desired-cursor-pos
+                                             (point-max))
+             "\n"
+             "```\n\n")
+            (nth 2 comments)))))
+
+;; FIXME Insert after user accept these code
+(defun eureka--project-code-implement-done-callback (text session-id invoke-buffer)
+  "Insert code returned from LLM."
+  (let ((code (eureka--project-code-implement-parse-response text)))
+    (when code
+      (with-current-buffer invoke-buffer
+        (when eureka--desired-cursor-pos-for-implement
+          (goto-char eureka--desired-cursor-pos-for-implement)
+          (insert code)
+          (pulse-momentary-highlight-region eureka--desired-cursor-pos-for-implement
+                                            (+ eureka--desired-cursor-pos-for-implement
+                                               (length code))))))))
+
+(defvar-local eureka--desired-cursor-pos-for-implement nil)
 ;;;###autoload
 (defun eureka-project-code-implement ()
   "Implement what coments before the cursor say."
@@ -512,33 +643,32 @@ Returns the path of the created directory or nil if failed."
          (project (eureka--project project-root))
          (context (eureka--file-context))
          session
-         buffer
-	 comments)
+         session-buffer
+	 impl-context
+         task)
     (when project
-      (setq comments "TODO")
-      (setq session (eureka-project-session project))
-      (setq buffer (eureka-session-buffer session))
-      (unless (buffer-live-p buffer)
-        (setq buffer (find-file-noselect (eureka-session-file session)))
-        (setf (eureka-session-buffer session) buffer))
-      (display-buffer buffer)
-      (eureka-stream
-       (format
-        eureka-project-code-prompt-template
-        context
-        eureka-project-code-context-format
-        comments
-        (format eureka-project-code-edit-suffix-template eureka-coding-language))
-       :provider eureka-provider
-       :session session
-       :buffer buffer
-       :point (with-current-buffer buffer (point))
-       :on-done #'eureka--project-code-edit-done-callback))))
-
-;;;###autoload
-(defun eureka-project-code-complete ()
-  "Complete code according the surrounding code."
-  )
+      (setq impl-context (eureka--context-for-implement))
+      (when impl-context
+        (setq eureka--desired-cursor-pos-for-implement (nth 0 impl-context)
+              task (nth 2 impl-context))
+        (setq session (eureka-project-session project))
+        (setq session-buffer (eureka-session-buffer session))
+        (unless (buffer-live-p session-buffer)
+          (setq session-buffer (find-file-noselect (eureka-session-file session)))
+          (setf (eureka-session-buffer session) session-buffer))
+        (display-buffer session-buffer)
+        (eureka-stream
+         (format
+          eureka-project-code-prompt-template
+          ""
+          ""
+          (format eureka-project-code-implement-template task (nth 1 impl-context))
+          "")
+         :provider eureka-provider
+         :session session
+         :buffer session-buffer
+         :point (with-current-buffer session-buffer (goto-char (point-max)) (point))
+         :on-done #'eureka--project-code-implement-done-callback)))))
 
 ;;;###autoload
 (defun eureka-project-ask (task)
