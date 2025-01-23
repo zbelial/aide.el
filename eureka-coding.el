@@ -139,7 +139,7 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
   "Prompt template for `eureka-project-code-edit'.")
 
 ;; 4 placeholders: task, code represented by CODEBEFORECURSOR, CURSORPOSITION and CODEAFTERCURSOR, .
-(defconst eureka-project-code-implement-template "implement what the following task says. Task: %s \n.
+(defconst eureka-project-code-implement-template "You as an expert software developer, implement what the following task says. Task: %s \n.
 User's current code is enclosed in three markers: <CURSORPOSITION>, <CODEBEFORECURSOR> and <CODEAFTERCURSOR>.
 
 What each marker means is explained below:
@@ -415,26 +415,33 @@ Below is user's current code:
           (ediff-directories project-root temp-dir nil))
       (message "No project or No actions."))))
 
-;;;###autoload
-(defun eureka-project-code-edit (task)
-  "Do some coding edit in the project."
-  (interactive "sWhat needs to be done: ")
+(defun eureka--get-project-session ()
+  "Get session of the project current file belongs to."
   (let* ((project-root (eureka--project-root))
          (project (eureka--project project-root))
-         (context (eureka--file-context t t t))
-         session
-         session-file
-         buffer
-         text)
+         session)
     (when project
       (setq session (eureka-project-session project))
       (setq buffer (eureka-session-buffer session))
       ;; if buffer has been destroyed, recreate it
       (unless (buffer-live-p buffer)
-        (setq session-file (eureka-session-file session))
-        (setq buffer (find-file-noselect session-file))
-        (setf (eureka-session-buffer session) buffer))
+        (setq buffer (find-file-noselect (eureka-session-file session)))
+        (setf (eureka-session-buffer session) buffer)))
+    session))
+
+;;;###autoload
+(defun eureka-project-code-edit (task)
+  "Do some coding edit in the project."
+  (interactive "sWhat needs to be done: ")
+  (let (context
+        (session (eureka--get-project-session))
+        buffer
+        text)
+    (when session
+      (setq context (eureka--file-context t t t))
+      (setq buffer (eureka-session-buffer session))
       (display-buffer buffer)
+
       (eureka-model-chat
        (format
         eureka-project-code-prompt-template
@@ -442,31 +449,19 @@ Below is user's current code:
         eureka-project-code-context-format
         task
         (format eureka-project-code-edit-suffix-template eureka-coding-language))
-       :provider eureka-provider
        :session session
-       :buffer buffer
-       :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'eureka--project-code-edit-done-callback))))
 
 ;;;###autoload
 (defun eureka-project-code-explain ()
   "Explain code in selected region or current buffer."
   (interactive)
-  (let* ((project-root (eureka--project-root))
-         (project (eureka--project project-root))
-         context
-         session
-         session-file
-         buffer
-         text)
-    (when project
-      (setq session (eureka-project-session project))
+  (let (context
+        (session (eureka--get-project-session))
+        buffer
+        text)
+    (when session
       (setq buffer (eureka-session-buffer session))
-      ;; if buffer has been destroyed, recreate it
-      (unless (buffer-live-p buffer)
-        (setq session-file (eureka-session-file session))
-        (setq buffer (find-file-noselect session-file))
-        (setf (eureka-session-buffer session) buffer))
       (setq text (if (region-active-p)
 		     (buffer-substring-no-properties (region-beginning) (region-end))
 	           (buffer-substring-no-properties (point-min) (point-max))))
@@ -477,29 +472,18 @@ Below is user's current code:
                        eureka-project-code-context-format
                        (format eureka-project-code-explain-instruction-template text)
                        "")
-                      :session session
-                      :buffer buffer
-                      :provider eureka-provider))))
+                      :session session))))
 
 ;;;###autoload
 (defun eureka-project-code-review ()
   "Review code in selected region or current buffer."
   (interactive)
-  (let* ((project-root (eureka--project-root))
-         (project (eureka--project project-root))
-         context
-         session
-         session-file
-         buffer
-         text)
-    (when project
-      (setq session (eureka-project-session project))
+  (let (context
+        (session (eureka--get-project-session))
+        buffer
+        text)
+    (when session
       (setq buffer (eureka-session-buffer session))
-      ;; if buffer has been destroyed, recreate it
-      (unless (buffer-live-p buffer)
-        (setq session-file (eureka-session-file session))
-        (setq buffer (find-file-noselect session-file))
-        (setf (eureka-session-buffer session) buffer))
       (setq text (if (region-active-p)
 		     (buffer-substring-no-properties (region-beginning) (region-end))
 	           (buffer-substring-no-properties (point-min) (point-max))))
@@ -510,32 +494,26 @@ Below is user's current code:
                        eureka-project-code-context-format
                        (format eureka-project-code-review-instruction-template text)
                        "")
-                      :session session
-                      :buffer buffer
-                      :provider eureka-provider))))
+                      :session session))))
 
 ;;;###autoload
 (defun eureka-project-code-improve ()
   "Improve selected code or the code in current buffer."
   (interactive)
-  (let* ((project-root (eureka--project-root))
-         (project (eureka--project project-root))
-         (context (eureka--file-context t t t))
-         session
-         buffer
-         (beg (if (region-active-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (region-active-p)
-		  (region-end)
-		(point-max)))
-	 (text (buffer-substring-no-properties beg end)))
-    (when project
-      (setq session (eureka-project-session project))
+  (let (context
+        buffer
+        (session (eureka--get-project-session))
+        (beg (if (region-active-p)
+		 (region-beginning)
+	       (point-min)))
+	(end (if (region-active-p)
+		 (region-end)
+	       (point-max)))
+	(text (buffer-substring-no-properties beg end)))
+    (when session
+      (setq context (eureka--file-context t t t))
       (setq buffer (eureka-session-buffer session))
-      (unless (buffer-live-p buffer)
-        (setq buffer (find-file-noselect (eureka-session-file session)))
-        (setf (eureka-session-buffer session) buffer))
+      
       (display-buffer buffer)
       (eureka-model-chat
        (format
@@ -544,10 +522,7 @@ Below is user's current code:
         eureka-project-code-context-format
         (format eureka-project-code-improve-instruction-template text)
         (format eureka-project-code-edit-suffix-template eureka-coding-language))
-       :provider eureka-provider
        :session session
-       :buffer buffer
-       :point (with-current-buffer buffer (goto-char (point-max)) (point))
        :on-done #'eureka--project-code-edit-done-callback))))
 
 (defun eureka--is-comment-p ()
@@ -640,23 +615,19 @@ NOTE: Only support single line comment ATM."
 (defun eureka-project-code-implement ()
   "Implement what coments before the cursor say."
   (interactive)
-  (let* ((project-root (eureka--project-root))
-         (project (eureka--project project-root))
-         (context (eureka--file-context))
-         session
-         session-buffer
-	 impl-context
-         task)
-    (when project
+  (let (context
+        (session (eureka--get-project-session))
+        session-buffer
+	impl-context
+        task)
+    (when session
       (setq impl-context (eureka--context-for-implement))
       (when impl-context
+        (setq context (eureka--file-context))
         (setq eureka--desired-cursor-pos-for-implement (nth 0 impl-context)
               task (nth 2 impl-context))
-        (setq session (eureka-project-session project))
         (setq session-buffer (eureka-session-buffer session))
-        (unless (buffer-live-p session-buffer)
-          (setq session-buffer (find-file-noselect (eureka-session-file session)))
-          (setf (eureka-session-buffer session) session-buffer))
+        
         (display-buffer session-buffer)
         (eureka-model-chat
          (format
@@ -665,31 +636,22 @@ NOTE: Only support single line comment ATM."
           ""
           (format eureka-project-code-implement-template task (nth 1 impl-context))
           "")
-         :provider eureka-provider
          :session session
-         :buffer session-buffer
-         :point (with-current-buffer session-buffer (goto-char (point-max)) (point))
          :on-done #'eureka--project-code-implement-done-callback)))))
 
 ;;;###autoload
 (defun eureka-project-ask (task)
   "Ask llm."
   (interactive "sWhat do you wanna ask: ")
-  (let* ((project-root (eureka--project-root))
-         (project (eureka--project project-root))
-         (context (eureka--file-context))
-         session
-         session-file
-         buffer
-         text)
-    (when project
+  (let ((session (eureka--get-project-session))
+        context
+        buffer
+        text)
+    (when session
+      (setq context (eureka--file-context))
       (setq session (eureka-project-session project))
       (setq buffer (eureka-session-buffer session))
-      ;; if buffer has been destroyed, recreate it
-      (unless (buffer-live-p buffer)
-        (setq session-file (eureka-session-file session))
-        (setq buffer (find-file-noselect session-file))
-        (setf (eureka-session-buffer session) buffer))
+      
       (display-buffer buffer)
       (eureka-instant (format
                        eureka-project-code-prompt-template
@@ -697,9 +659,7 @@ NOTE: Only support single line comment ATM."
                        eureka-project-code-context-format
                        task
                        "")
-                      :session session
-                      :buffer buffer
-                      :provider eureka-provider))))
+                      :session session))))
 
 ;;;; File skeleton
 
@@ -1374,7 +1334,7 @@ The result will include project's context."
         (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq response (eureka-session-response session))))
-      (message "response: %s" response))))
+      (message "response:\n%s" response))))
 
 (defun eureka-latest-prompt ()
   (interactive)
@@ -1385,7 +1345,7 @@ The result will include project's context."
         (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq prompt (eureka-session-prompt session))))
-      (message "prompt: %s" prompt))))
+      (message "prompt:\n%s" prompt))))
 
 (provide 'eureka-coding)
 
