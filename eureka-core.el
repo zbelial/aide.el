@@ -332,14 +332,16 @@ If EPHEMERAL non nil new session will not be associated with any file."
       (with-temp-file session-file-name
 	(insert (prin1-to-string session))))))
 
-(defun eureka-stream (prompt &rest args)
+(defun eureka-model-chat (prompt &rest args)
   "Query eureka for PROMPT.
 ARGS contains keys for fine control.
+
+:streaming t or nil -- Streaming or not.
 
 :provider PROVIDER -- PROVIDER is an llm provider for generation.
 
 :buffer BUFFER -- BUFFER is the buffer (or `buffer-name') to insert eureka reply
-in.  Default value is (current-buffer).
+in.
 
 :point POINT -- POINT is the point in buffer to insert eureka reply at.
 
@@ -347,9 +349,6 @@ in.  Default value is (current-buffer).
 strings before they're inserted into the BUFFER.
 
 :session SESSION -- SESSION is a eureka conversation session.
-
-:ephemeral-session BOOL -- if BOOL is set session will not be saved to named
-file by default.
 
 :on-error ON-ERROR -- ON-ERROR a function that's called with an error message on
 failure (with BUFFER current) and session-id.
@@ -467,11 +466,11 @@ ARGS contains keys for fine control.
                   (point))))
     (display-buffer buffer (when eureka-instant-display-action-function
 			     `((ignore . (,eureka-instant-display-action-function)))))
-    (eureka-stream prompt
-                   :session session
-		   :buffer buffer
-		   :provider provider
-                   :point point)))
+    (eureka-model-chat prompt
+                       :session session
+		       :buffer buffer
+		       :provider provider
+                       :point point)))
 
 (provide 'eureka-core)
 

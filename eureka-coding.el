@@ -31,6 +31,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'pulse)
 (require 'eureka-core)
 (require 'eureka-utils)
 ;; from https://github.com/zbelial/cache,
@@ -434,7 +435,7 @@ Below is user's current code:
         (setq buffer (find-file-noselect session-file))
         (setf (eureka-session-buffer session) buffer))
       (display-buffer buffer)
-      (eureka-stream
+      (eureka-model-chat
        (format
         eureka-project-code-prompt-template
         context
@@ -536,7 +537,7 @@ Below is user's current code:
         (setq buffer (find-file-noselect (eureka-session-file session)))
         (setf (eureka-session-buffer session) buffer))
       (display-buffer buffer)
-      (eureka-stream
+      (eureka-model-chat
        (format
         eureka-project-code-prompt-template
         context
@@ -621,7 +622,7 @@ NOTE: Only support single line comment ATM."
              "```\n\n")
             (nth 2 comments)))))
 
-;; FIXME Insert after user accept these code
+;; FIXME Insert when user confirms to accept these code
 (defun eureka--project-code-implement-done-callback (text session-id invoke-buffer)
   "Insert code returned from LLM."
   (let ((code (eureka--project-code-implement-parse-response text)))
@@ -657,7 +658,7 @@ NOTE: Only support single line comment ATM."
           (setq session-buffer (find-file-noselect (eureka-session-file session)))
           (setf (eureka-session-buffer session) session-buffer))
         (display-buffer session-buffer)
-        (eureka-stream
+        (eureka-model-chat
          (format
           eureka-project-code-prompt-template
           ""
