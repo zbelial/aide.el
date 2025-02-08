@@ -67,8 +67,8 @@
         (substring retval 1)
       retval)))
 
-(defun eureka--project-root ()
-  (when-let* ((proj (project-current))
+(defun eureka--project-root (&optional project)
+  (when-let* ((proj (or project (project-current)))
               (root (project-root proj)))
     (file-truename root)))
 

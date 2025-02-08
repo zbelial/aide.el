@@ -223,7 +223,7 @@ RESPONSE is a variable contains last response in this session. "
     (concat
      (string-join
       (flatten-tree
-       (list "eureka"
+       (list "*eureka-session"
              cleaned-label))
       "-")
      (format "(%s)" llm-name))))
@@ -239,7 +239,7 @@ RESPONSE is a variable contains last response in this session. "
   (let* ((cleaned-label (replace-regexp-in-string "/" "_" label)))
     (concat
      (string-join
-      (list "eureka"
+      (list "*eureka-session"
             cleaned-label
             (eureka-get-current-time))
       "-")

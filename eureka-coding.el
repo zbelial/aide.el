@@ -97,7 +97,7 @@ ONLY EVER RETURN CODE IN A *SEARCH/REPLACE BLOCK*!
 
 # *SEARCH/REPLACE block* Rules:
 
-Every *SEARCH/REPLACE block* must use this format:
+Every *SEARCH/REPLACE block* *MUST* use this format:
 1. The opening fence and code language, eg: ```python, here python should be replaced with the code language that is generated
 2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
 3. The start of search block: <<<<<<< SEARCH
@@ -210,6 +210,10 @@ Below is user's current code:
    (group (minimal-match
            (one-or-more (not (any "\n" "\r")))))
    (+ (or "\n" "\r"))
+   ;; sometimes llm returns another line of fence
+   (zero-or-one
+    (minimal-match
+     (literal "```") (one-or-more alpha) (+ (or "\n" "\r"))))
    ;;SEARCH
    (minimal-match
     (eval eureka--code-search-label) (+ (or "\n" "\r")))
@@ -316,6 +320,7 @@ Below is user's current code:
           (while (not stop?)
             (progn
               (setq match-result (eureka--match eureka--project-code-edit-pattern text start))
+              ;; (message "match-result: %s" match-result)
               (if (and match-result
                        (length> match-result 2))
                   (progn
@@ -357,7 +362,7 @@ Below is user's current code:
 (defun eureka--create-temp-dir (prefix)
   "Create a temporary directory under BASEDIR.
   Returns the path of the created directory or nil if failed."
-  (let* ((temp-dir-prefix (concat "eureka-" (replace-regexp-in-string "/" "_" prefix) "-" (eureka-get-current-time) "-"))
+  (let* ((temp-dir-prefix (concat "eureka-ediff-" (replace-regexp-in-string "/" "_" prefix) "-" (eureka-get-current-time) "-"))
          (temp-dir (make-temp-file temp-dir-prefix t)))
     (if (file-directory-p temp-dir)
         temp-dir
@@ -413,6 +418,8 @@ Below is user's current code:
                     (insert tmpcont)
                     (save-buffer)))))
           (ediff-directories project-root temp-dir nil))
+      (message "project: %s" project)
+      (message "actions: %s" actions)
       (message "No project or No actions."))))
 
 (defun eureka--get-project-session ()
@@ -720,6 +727,7 @@ NOTE: Only support single line comment ATM."
                    ("function_definition" (function_definition ":" @context.body @context.surrounding.start body: (_)) @context)))
         (java . (("class_declaration" (class_declaration body: (class_body :anchor "{" @context.surrounding.start _ "}" @context.surrounding.end :anchor) @context.body) @context)
                  ("method_declaration" (method_declaration body: (block :anchor "{" @context.surrounding.start _ "}" @context.surrounding.end :anchor) @context.body) @context)
+                 ("method_declaration" (method_declaration !body ";") @context)
                  ("field_declaration" (field_declaration declarator: (_) ";") @context)))
         ))
 
@@ -1126,13 +1134,19 @@ its `eureka-project'.")
 (defun eureka-add-local-context ()
   "Add a file to local manual context."
   (interactive)
-  (let ((project-root (eureka--project-root))
+  (let ((proj (project-current))
+        (proj-root (eureka--project-root proj))
         filename)
-    (setq filename (read-file-name "Add a file to local context: "))
-    (when (and filename
-               project-root
-               (file-exists-p filename))
-      (setq eureka--file-context-manually (delete-dups (push filename eureka--file-context-manually))))))
+    ;; (setq filename (read-file-name "Add a file to local context: "))
+    (if proj-root
+        (progn
+          (setq filename (completing-read "Add a file to local context: "
+                                          (project-files proj)))
+          (when (and filename
+                     proj-root
+                     (file-exists-p filename))
+            (setq eureka--file-context-manually (delete-dups (push filename eureka--file-context-manually)))))
+      (message "Not under a project."))))
 
 ;;;###autoload
 (defun eureka-remove-local-context ()
@@ -1182,21 +1196,26 @@ if not existing."
 (defun eureka-add-project-context ()
   "Add a file to project context."
   (interactive)
-  (let ((project-root (eureka--project-root))
-        filename
-        context
-        project
-        session)
-    (setq filename (read-file-name "Add a file to project context: "))
-    (when (and filename
-               project-root
-               (file-exists-p filename))
-      (setq project (eureka--project project-root))
-      (when project
-        (setq context (eureka-project-context project))
-        (setq context (delete-dups (push filename context)))
-        (setf (eureka-project-context project) context)
-        (puthash project-root project eureka--projects)))))
+  (let* ((proj (project-current))
+         (proj-root (eureka--project-root proj))
+         filename
+         context
+         project
+         session)
+    (if proj-root
+        (progn
+          (setq filename (completing-read "Add a file to project context: "
+                                          (project-files proj)))
+          (when (and filename
+                     proj-root
+                     (file-exists-p filename))
+            (setq project (eureka--project proj-root))
+            (when project
+              (setq context (eureka-project-context project))
+              (setq context (delete-dups (push filename context)))
+              (setf (eureka-project-context project) context)
+              (puthash proj-root project eureka--projects))))
+      (message "Not under a project."))))
 
 ;;;###autoload
 (defun eureka-remove-project-context ()
@@ -1327,17 +1346,19 @@ The result will include project's context."
 ;;;; Helping functions
 (defun eureka-latest-response ()
   (interactive)
+  (message "response:\n%s" (eureka--latest-response)))
+
+(defun eureka--latest-response ()
   (with-current-buffer (current-buffer)
     (let* ((project-root (eureka--project-root))
-           response)
+           (response ""))
       (when project-root
         (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq response (eureka-session-response session))))
-      (message "response:\n%s" response))))
+      (or response ""))))
 
-(defun eureka-latest-prompt ()
-  (interactive)
+(defun eureka--latest-prompt ()
   (with-current-buffer (current-buffer)
     (let* ((project-root (eureka--project-root))
            prompt)
@@ -1345,7 +1366,11 @@ The result will include project's context."
         (when-let* ((project (eureka--project project-root))
                     (session (eureka-project-session project)))
           (setq prompt (eureka-session-prompt session))))
-      (message "prompt:\n%s" prompt))))
+      (or prompt ""))))
+
+(defun eureka-latest-prompt ()
+  (interactive)
+  (message "prompt:\n%s" (eureka--latest-prompt)))
 
 (provide 'eureka-coding)
 
